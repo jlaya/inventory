@@ -1,0 +1,6 @@
+{
+  "name": "Rango de Tolerancia de Inventario",
+  "description": "Sistema de control de inventario con rangos de tolerancia para restaurantes, descuentos automáticos por receta y alertas de reorden en tiempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
