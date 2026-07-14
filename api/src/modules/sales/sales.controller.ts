@@ -1,13 +1,13 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Param, 
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
   Query,
-  Res, 
-  UseInterceptors, 
-  UploadedFile, 
-  BadRequestException, 
+  Res,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
   ParseIntPipe,
   Body
 } from '@nestjs/common';
@@ -18,7 +18,7 @@ import { Public } from '../../core/decorators/public.decorator';
 
 @Controller('sales')
 export class SalesController {
-  constructor(private readonly salesService: SalesService) {}
+  constructor(private readonly salesService: SalesService) { }
 
   @Get()
   async getAllSales(
@@ -51,13 +51,12 @@ export class SalesController {
   async uploadSalesFile(
     @UploadedFile() file: any,
     @Body('allowNegativeStock') allowNegativeStockStr?: string,
-    @Body('areaCode') areaCode?: string
   ) {
     if (!file) {
       throw new BadRequestException('Archivo no proporcionado');
     }
     const allowNegativeStock = allowNegativeStockStr === 'true';
-    const jobId = this.salesService.startProcessingJob(file.buffer, allowNegativeStock, areaCode);
+    const jobId = this.salesService.startProcessingJob(file.buffer, allowNegativeStock);
     return {
       success: true,
       jobId,

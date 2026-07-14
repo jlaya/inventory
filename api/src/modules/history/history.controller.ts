@@ -1,11 +1,12 @@
-import { Controller, Get, Post, Body, Query, ParseIntPipe, Optional } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Res } from '@nestjs/common';
 import { HistoryService } from './history.service';
 import { CreateHistoryDto } from './dto/create-history.dto';
 import { Public } from '../../core/decorators/public.decorator';
+import type { Response } from 'express';
 
 @Controller('history')
 export class HistoryController {
-  constructor(private readonly historyService: HistoryService) {}
+  constructor(private readonly historyService: HistoryService) { }
 
   @Post()
   create(@Body() createHistoryDto: CreateHistoryDto) {
@@ -76,5 +77,26 @@ export class HistoryController {
       endDate,
       warehouseId ? parseInt(warehouseId, 10) : undefined,
     );
+  }
+
+  @Public()
+  @Get('audit-data')
+  getAuditData(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.historyService.getAuditData(startDate, endDate);
+  }
+
+  @Public()
+  @Get('audit-pdf')
+  async getAuditPdf(
+    @Res() res: Response,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=reporte_auditoria_inventario.pdf');
+    await this.historyService.generateAuditPdf(res, startDate, endDate);
   }
 }

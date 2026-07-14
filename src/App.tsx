@@ -21,6 +21,7 @@ import SalesUploader from './components/SalesUploader';
 import PurchaseOrderUploader from './components/PurchaseOrderUploader';
 import AlertNotifications from './components/AlertNotifications';
 import LandingPage from './components/LandingPage';
+import AuditDashboard from './components/AuditDashboard';
 
 export default function App() {
   // --- VIEW STATE ---
@@ -59,7 +60,7 @@ export default function App() {
   });
 
   // --- UI STATE ---
-  const [activeTab, setActiveTab] = useState<'tolerancia' | 'recetas' | 'ventas' | 'compras'>('tolerancia');
+  const [activeTab, setActiveTab] = useState<'tolerancia' | 'recetas' | 'ventas' | 'compras' | 'auditoria'>('tolerancia');
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState('todos');
 
@@ -764,6 +765,7 @@ export default function App() {
               { id: 'tolerancia', label: 'Inventario', icon: ClipboardCheck },
               { id: 'ventas', label: 'Ventas', icon: ShoppingBag },
               { id: 'recetas', label: 'Recetas', icon: Utensils },
+              { id: 'auditoria', label: 'Auditoría de Stock', icon: ClipboardCheck },
               //{ id: 'compras', label: 'Órdenes de Compra', icon: Truck },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -844,6 +846,12 @@ export default function App() {
                   onUploadCompra={handleUploadCompra}
                   historialCompras={historialCompras}
                   onLimpiarHistorial={handleLimpiarHistorialCompras}
+                />
+              )}
+
+              {activeTab === 'auditoria' && (
+                <AuditDashboard
+                  apiUrl={getApiUrl()}
                 />
               )}
             </motion.div>

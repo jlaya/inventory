@@ -8,6 +8,9 @@ import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { User } from '../users/entities/user.entity';
 import { InventoryStock } from '../inventory_stock/entities/inventory_stock.entity';
 
+import { Response } from 'express';
+import { generateAuditPdfReport } from './audit-pdf.generator';
+
 @Injectable()
 export class HistoryService {
   constructor(
@@ -321,5 +324,112 @@ export class HistoryService {
         totalCost: parseFloat(item.totalCost || 0),
       })),
     };
+  }
+
+  /**
+   * Obtiene los datos detallados de auditoría de inventario.
+   */
+  async getAuditData(startDate?: string, endDate?: string) {
+    // 1. Consulta de salidas de ventas
+    const salesParams: any[] = [];
+    let querySales = `
+      SELECT 
+        h.id as history_id,
+        h.movement_date as movement_date,
+        h.quantity as quantity,
+        h.previous_stock as previous_stock,
+        h.current_stock as current_stock,
+        h.unit_cost as unit_cost,
+        h.total_cost as total_cost,
+        h.notes as notes,
+        h.created_at as created_at,
+        h.inventory_id as inventory_id,
+        inv.name as inventory_name,
+        inv.sku as inventory_sku,
+        u.abbreviation as uom,
+        w.name as warehouse_name,
+        s.code as sale_code,
+        s.quantity as sale_recipe_quantity,
+        ing.name as recipe_name,
+        im.recipe_code as recipe_code,
+        (
+          SELECT x 
+          FROM jsonb_array_elements(im.items) x 
+          WHERE (x->>'inventory_id')::bigint = h.inventory_id 
+          LIMIT 1
+        ) as movement_item_detail
+      FROM history h
+      INNER JOIN inventory inv ON h.inventory_id = inv.id
+      LEFT JOIN units_of_measure u ON inv.uom_id = u.id
+      INNER JOIN warehouses w ON h.warehouse_id = w.id
+      LEFT JOIN sales s ON h.reference_id = s.id AND h.reference_type = 'SALE'
+      LEFT JOIN ingredients ing ON s.ingredient_id = ing.id
+      LEFT JOIN inventory_movements im ON im.recipe_id = s.ingredient_id 
+        AND ABS(EXTRACT(EPOCH FROM (im.created_at - s.created_at))) < 10
+      WHERE h.movement_type = 'SALE'
+    `;
+
+    let salesParamIdx = 1;
+    if (startDate) {
+      querySales += ` AND h.movement_date >= $${salesParamIdx++}`;
+      salesParams.push(startDate);
+    }
+    if (endDate) {
+      querySales += ` AND h.movement_date <= $${salesParamIdx++}`;
+      salesParams.push(endDate);
+    }
+    querySales += ` ORDER BY h.movement_date DESC, h.created_at DESC`;
+    const sales = await this.historyRepository.manager.query(querySales, salesParams);
+
+    // 2. Consulta de entradas de abastecimiento al almacén central
+    const inputParams: any[] = [];
+    let queryInputs = `
+      SELECT 
+        h.id as history_id,
+        h.movement_date as movement_date,
+        h.quantity as quantity,
+        h.previous_stock as previous_stock,
+        h.current_stock as current_stock,
+        h.unit_cost as unit_cost,
+        h.total_cost as total_cost,
+        h.notes as notes,
+        h.reference_type as reference_type,
+        h.reference_id as reference_id,
+        inv.name as inventory_name,
+        inv.sku as inventory_sku,
+        u.abbreviation as uom,
+        w.name as warehouse_name,
+        po.purchase_order_number as po_number,
+        po.supplier_name as supplier_name
+      FROM history h
+      INNER JOIN inventory inv ON h.inventory_id = inv.id
+      LEFT JOIN units_of_measure u ON inv.uom_id = u.id
+      INNER JOIN warehouses w ON h.warehouse_id = w.id
+      LEFT JOIN purchase_orders po ON h.reference_id = po.id AND h.reference_type = 'PURCHASE_ORDER'
+      WHERE h.movement_type = 'INPUT' 
+        AND (w.warehouse_type = 'CENTRAL' OR w.code = 'WH-CENTRAL' OR w.name = 'Almacén Central')
+    `;
+
+    let inputParamIdx = 1;
+    if (startDate) {
+      queryInputs += ` AND h.movement_date >= $${inputParamIdx++}`;
+      inputParams.push(startDate);
+    }
+    if (endDate) {
+      queryInputs += ` AND h.movement_date <= $${inputParamIdx++}`;
+      inputParams.push(endDate);
+    }
+    queryInputs += ` ORDER BY h.movement_date DESC, h.created_at DESC`;
+    const inputs = await this.historyRepository.manager.query(queryInputs, inputParams);
+
+    return { sales, inputs };
+  }
+
+  /**
+   * Genera el reporte en PDF de auditoría y lo envía como flujo en la respuesta.
+   */
+  async generateAuditPdf(res: Response, startDate?: string, endDate?: string) {
+    const { sales, inputs } = await this.getAuditData(startDate, endDate);
+    generateAuditPdfReport(res, sales, inputs, startDate, endDate);
   }
 }

@@ -92,7 +92,7 @@ export class SalesService {
   }
 
   // Enqueue a job and run asynchronously in the background
-  startProcessingJob(fileBuffer: Buffer, allowNegativeStock: boolean, areaCode?: string): string {
+  startProcessingJob(fileBuffer: Buffer, allowNegativeStock: boolean): string {
     const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
 
     const progress: JobProgress = {
@@ -109,7 +109,7 @@ export class SalesService {
     this.activeJobs.set(jobId, progress);
 
     // Fire-and-forget execution
-    this.processSalesFile(jobId, fileBuffer, allowNegativeStock, areaCode).catch((err) => {
+    this.processSalesFile(jobId, fileBuffer, allowNegativeStock).catch((err) => {
       //console.error(`Error in background sales processing job ${jobId}:`, err);
       const current = this.activeJobs.get(jobId);
       if (current) {
@@ -147,9 +147,6 @@ export class SalesService {
       for (let index = 0; index < rawRows.length; index++) {
         const row = rawRows[index];
         const rowNum = index + 2;
-
-        // Dynamic column lookup to handle column variations
-        const rowAreaCode = String(row['area'] || row['Area'] || '').trim();
 
         // Lookup Barcode
         const barcode = String(
@@ -330,7 +327,7 @@ export class SalesService {
             continue;
           }
 
-          const availableStock = Number(stock.minimumStock);
+          const availableStock = Number(stock.quantity);
           if (availableStock < neededQty && !allowNegativeStock) {
             shortages.push({
               inventoryId: Number(inventory.id),
@@ -440,7 +437,7 @@ export class SalesService {
                 movementType: 'SALE',
                 quantity: item.consumed,
                 previousStock: previousStock,
-                currentStock: item.stock.minimumStock,
+                currentStock: item.stock.quantity,
                 referenceType: 'SALE',
                 referenceId: Number(savedSale.id),
                 notes: `Venta procesada. Producto: ${ingredient.name}`,
@@ -622,7 +619,7 @@ export class SalesService {
         continue;
       }
 
-      const availableStock = Number(stock.minimumStock);
+      const availableStock = Number(stock.quantity);
       if (availableStock < neededQty) {
         shortages.push({
           inventoryId: Number(inventory.id),
@@ -674,9 +671,9 @@ export class SalesService {
 
       for (const item of ingredientsToDeduct) {
         const isCentral = warehouse.warehouseType === 'CENTRAL' || warehouse.name === 'Almacén Central';
-        const previousStock = Number(item.stock.minimumStock);
+        const previousStock = Number(item.stock.quantity);
         const newQty = previousStock - item.consumed;
-        item.stock.minimumStock = isCentral ? newQty : Math.max(0, newQty);
+        item.stock.quantity = isCentral ? newQty : Math.max(0, newQty);
         await queryRunner.manager.save(item.stock);
 
         movementItems.push({
@@ -684,7 +681,7 @@ export class SalesService {
           name: item.inventory.name,
           consumed_quantity: item.consumed,
           previous_stock: previousStock,
-          current_stock: item.stock.minimumStock,
+          current_stock: item.stock.quantity,
           uom: item.inventory.uom?.abbreviation || 'Kg'
         });
 
@@ -704,7 +701,7 @@ export class SalesService {
           movementType: 'SALE',
           quantity: item.consumed,
           previousStock: previousStock,
-          currentStock: item.stock.minimumStock,
+          currentStock: item.stock.quantity,
           referenceType: 'SALE',
           referenceId: Number(sale.id),
           notes: `Venta pendiente procesada manualmente. Producto: ${sale.ingredient.name}`,
