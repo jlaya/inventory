@@ -240,18 +240,40 @@ export class SalesService {
 
         // Clean all values inside row for items JSONB
         const itemsJson: Record<string, any> = {};
-        const primaryKeysLower = [
-          'código de barra', 'codigo de barra', 'código de barras', 'codigo de barras', 'barcode', 'idreceta',
-          'producto', 'nombre', 'name', 'receta',
-          'cantidad', 'qty', 'quantity', 'cantidadvendida',
-          '#', 'fila', 'row', 'area', 'area_code', 'areacode'
+        const allowedMetricsHeaders = [
+          '% cantidad',
+          'venta neta',
+          '% ventas',
+          'descuento',
+          '% descuento',
+          'ultimo costo',
+          'último costo',
+          '% ultimo costo',
+          '% último costo',
+          'utilidad ultimo',
+          'utilidad último',
+          'utilidad ultimo costo',
+          'utilidad último costo',
+          '% utilidad ultimo',
+          '% utilidad último',
+          '% utilidad ultimo costo',
+          '% utilidad último costo',
+          'costo promedio',
+          '% costo promedio',
+          'utilidad costo',
+          'utilidad costo promedio',
+          '% utilidad costo',
+          '% utilidad costo promedio',
+          'impuestos',
+          'venta neta + impuesto',
+          'venta neta + impuestos'
         ];
 
         for (const [key, value] of Object.entries(row)) {
           const trimmedKey = key.trim();
           const lowerKey = trimmedKey.toLowerCase();
 
-          if (!primaryKeysLower.includes(lowerKey)) {
+          if (allowedMetricsHeaders.includes(lowerKey)) {
             itemsJson[trimmedKey] = typeof value === 'number' ? value : this.cleanValue(value);
           }
         }

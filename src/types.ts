@@ -77,3 +77,23 @@ export interface HistorialCompra {
   }[];
 }
 
+export interface Warehouse {
+  id: number;
+  name: string;
+  code: string;
+  isActive?: boolean;
+}
+
+export interface User {
+  id: number;
+  name: string;
+  userName: string;
+  charge: string;
+  avatar: string;
+  status: boolean;
+  roleId: number | null;
+  warehouseId: number | null;
+  warehouse?: Warehouse | null;
+}
+
+

@@ -398,16 +398,32 @@ export class InventoryService {
     const headers = mode === 'update' ? [
       'Actualizar',
       'ID',
+      'SKU',
+      'Código de Barras',
       'Nombre',
+      'Descripción',
+      'Categoría',
+      'Subcategoría',
+      'Unidad de Medida',
+      'Tipo de Producto',
+      'Destino Operacional',
+      'Inventariable',
+      'Control Lotes',
+      'Control Vencimiento',
+      'Costo Referencia',
+      'Último Costo',
+      'Costo Promedio',
+      'Costo Reemplazo',
+      'Almacén Inicial',
       'Cantidad Inicial',
-      'Stock minimo',
-      'Stock maximo',
+      'Stock Mínimo',
+      'Stock Máximo',
       'Demanda Diaria Proyectada',
       'Demanda Semanal Proyectada',
       'Producción Proyectada',
+      'Ubicación Bin',
       'Activo'
     ] : [
-      'ID',
       'SKU',
       'Código de Barras',
       'Nombre',
@@ -438,34 +454,7 @@ export class InventoryService {
     const rows: any[] = [];
 
     if (mode === 'register') {
-      rows.push({
-        'ID': '',
-        'SKU': 'MP-HAR-TRG01',
-        'Código de Barras': '750100123456',
-        'Nombre': 'Harina de Trigo Especial',
-        'Descripción': 'Harina de trigo premium para panadería',
-        'Categoría': 'Ingredientes',
-        'Subcategoría': '',
-        'Unidad de Medida': 'kg',
-        'Tipo de Producto': 'Materia Prima',
-        'Destino Operacional': 'Cocina',
-        'Inventariable': 'Sí',
-        'Control Lotes': 'No',
-        'Control Vencimiento': 'Sí',
-        'Costo Referencia': 12.50,
-        'Último Costo': 12.00,
-        'Costo Promedio': 12.25,
-        'Costo Reemplazo': 12.50,
-        'Almacén Inicial': 'Almacén Central',
-        'Cantidad Inicial': 150,
-        'Stock Mínimo': 20,
-        'Stock Máximo': 1000,
-        'Demanda Diaria Proyectada': 10,
-        'Demanda Semanal Proyectada': 70,
-        'Producción Proyectada': 100,
-        'Ubicación Bin': 'Pasillo A-1',
-        'Activo': 'Sí'
-      });
+      // Se descarga vacía sin datos de prueba, solo con los encabezados
     } else {
       const data = await this.inventoryRepo.manager.query(`
         SELECT 
@@ -476,6 +465,8 @@ export class InventoryService {
           i.description,
           c.name AS category_name,
           sc.name AS subcategory_name,
+          u.id AS uom_id,
+          u.name AS uom_name,
           u.abbreviation AS uom_abbr,
           i.product_type,
           i.operational_destination,
@@ -506,16 +497,43 @@ export class InventoryService {
       `);
 
       for (const item of data) {
+        let productTypeName = '';
+        if (item.product_type === 'MP') productTypeName = 'Materia Prima';
+        else if (item.product_type === 'PT') productTypeName = 'Producto Terminado';
+        else if (item.product_type === 'SE') productTypeName = 'Semi-Elaborado';
+        else if (item.product_type === 'INS') productTypeName = 'Insumo';
+        else if (item.product_type === 'ACT') productTypeName = 'Activo Fijo';
+        else if (item.product_type === 'SRV') productTypeName = 'Servicio';
+
+        const uomDisplay = item.uom_id ? `${item.uom_id} - ${item.uom_name || ''} (${item.uom_abbr || ''})` : (item.uom_abbr || '');
+
         rows.push({
           'Actualizar': 'No',
           'ID': Number(item.id),
-          'Nombre': item.name,
+          'SKU': item.sku || '',
+          'Código de Barras': item.barcode || '',
+          'Nombre': item.name || '',
+          'Descripción': item.description || '',
+          'Categoría': item.category_name || '',
+          'Subcategoría': item.subcategory_name || '',
+          'Unidad de Medida': uomDisplay,
+          'Tipo de Producto': productTypeName,
+          'Destino Operacional': item.operational_destination || '',
+          'Inventariable': item.tracks_inventory ? 'Sí' : 'No',
+          'Control Lotes': item.tracks_lot ? 'Sí' : 'No',
+          'Control Vencimiento': item.tracks_expiration ? 'Sí' : 'No',
+          'Costo Referencia': item.reference_cost ? Number(item.reference_cost) : 0,
+          'Último Costo': item.last_cost ? Number(item.last_cost) : 0,
+          'Costo Promedio': item.average_cost ? Number(item.average_cost) : 0,
+          'Costo Reemplazo': item.replacement_cost ? Number(item.replacement_cost) : 0,
+          'Almacén Inicial': item.warehouse_name || 'Almacén Central',
           'Cantidad Inicial': item.quantity ? Number(item.quantity) : 0,
-          'Stock minimo': item.minimum_stock ? Number(item.minimum_stock) : 0,
-          'Stock maximo': item.maximum_stock ? Number(item.maximum_stock) : 0,
+          'Stock Mínimo': item.minimum_stock ? Number(item.minimum_stock) : 0,
+          'Stock Máximo': item.maximum_stock ? Number(item.maximum_stock) : 0,
           'Demanda Diaria Proyectada': item.projected_daily_demand ? Number(item.projected_daily_demand) : 0,
           'Demanda Semanal Proyectada': item.projected_weekly_demand ? Number(item.projected_weekly_demand) : 0,
           'Producción Proyectada': item.projected_production ? Number(item.projected_production) : 0,
+          'Ubicación Bin': item.bin_location || 'Estantería General',
           'Activo': item.is_active ? 'Sí' : 'No'
         });
       }
@@ -524,6 +542,17 @@ export class InventoryService {
     const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Catálogo');
+
+    // Add Units of Measure reference sheet
+    const uoms: any[] = await this.inventoryRepo.manager.query('SELECT id, name, abbreviation FROM units_of_measure');
+    const uomRows = uoms.map(u => ({
+      'ID (Escribir en el excel)': Number(u.id),
+      'Nombre': u.name,
+      'Abreviación': u.abbreviation,
+      'Texto para la Celda': `${u.id} - ${u.name} (${u.abbreviation})`
+    }));
+    const uomWorksheet = XLSX.utils.json_to_sheet(uomRows);
+    XLSX.utils.book_append_sheet(workbook, uomWorksheet, 'Unidades de Medida');
 
     const wscols = headers.map(h => ({ wch: Math.max(h.length + 3, 12) }));
     worksheet['!cols'] = wscols;
@@ -681,19 +710,17 @@ export class InventoryService {
       }
 
       let categoryId: number | null = null;
+      let categoryName: string | null = null;
       if ('Categoría' in row) {
-        const catName = String(row['Categoría'] || '').trim();
-        if (!catName) {
+        categoryName = String(row['Categoría'] || '').trim();
+        if (!categoryName) {
           errors.push({ row: rowNum, sku, message: 'La Categoría es obligatoria.' });
           continue;
         }
-        categoryId = categoryMap.get(catName.toLowerCase()) || null;
-        if (!categoryId) {
-          errors.push({ row: rowNum, sku, message: `La Categoría '${catName}' no existe o no está activa.` });
-          continue;
-        }
+        categoryId = categoryMap.get(categoryName.toLowerCase()) || null;
       } else if (existingProduct) {
         categoryId = existingProduct.category ? Number(existingProduct.category.id) : null;
+        categoryName = existingProduct.category ? existingProduct.category.name : null;
       }
 
       let subcategoryId: number | null = null;
@@ -717,9 +744,24 @@ export class InventoryService {
           errors.push({ row: rowNum, sku, message: 'La Unidad de Medida es obligatoria.' });
           continue;
         }
-        uomId = uomMap.get(uomName.toLowerCase()) || null;
+
+        // Try to extract ID from prefix (e.g., "1 - Kilogramo" -> 1)
+        const matchId = uomName.match(/^(\d+)/);
+        if (matchId) {
+          const parsedId = Number(matchId[1]);
+          const idExists = uoms.some(u => Number(u.id) === parsedId);
+          if (idExists) {
+            uomId = parsedId;
+          }
+        }
+
+        // Fallback to name/abbreviation lookup
         if (!uomId) {
-          errors.push({ row: rowNum, sku, message: `La Unidad de Medida '${uomName}' no existe.` });
+          uomId = uomMap.get(uomName.toLowerCase()) || null;
+        }
+
+        if (!uomId) {
+          errors.push({ row: rowNum, sku, message: `La Unidad de Medida '${uomName}' no existe o no es válida.` });
           continue;
         }
       } else if (existingProduct) {
@@ -902,6 +944,7 @@ export class InventoryService {
         name,
         description,
         categoryId,
+        categoryName,
         subcategoryId,
         uomId,
         productType,
@@ -956,16 +999,59 @@ export class InventoryService {
       await this.inventoryRepo.manager.transaction(async (transactionManager) => {
         for (const data of sanitizedRows) {
           let productId: number;
+          let finalCategoryId = data.categoryId;
+
+          if (data.categoryName && !finalCategoryId) {
+            const existingCat = await transactionManager.query(
+              'SELECT id FROM categories WHERE LOWER(name) = $1',
+              [data.categoryName.toLowerCase()]
+            );
+            if (existingCat.length > 0) {
+              finalCategoryId = Number(existingCat[0].id);
+            } else {
+              const code = `CAT-${data.categoryName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)}`;
+              const insertCat = await transactionManager.query(`
+                INSERT INTO categories (name, code, is_active)
+                VALUES ($1, $2, true)
+                RETURNING id
+              `, [data.categoryName, code]);
+              finalCategoryId = Number(insertCat[0].id);
+            }
+          }
 
           if (data.id) {
             await transactionManager.query(`
               UPDATE inventory SET
-                name = $1,
-                is_active = $2,
+                sku = $1,
+                barcode = $2,
+                name = $3,
+                description = $4,
+                category_id = $5,
+                subcategory_id = $6,
+                uom_id = $7,
+                product_type = $8,
+                operational_destination = $9,
+                tracks_inventory = $10,
+                tracks_lot = $11,
+                tracks_expiration = $12,
+                reference_cost = $13,
+                is_active = $14,
                 updated_at = NOW()
-              WHERE id = $3
+              WHERE id = $15
             `, [
+              data.sku,
+              data.barcode,
               data.name,
+              data.description,
+              finalCategoryId,
+              data.subcategoryId,
+              data.uomId,
+              data.productType,
+              data.operationalDestination,
+              data.tracksInventory,
+              data.tracksLot,
+              data.tracksExpiration,
+              data.referenceCost,
               data.isActive,
               data.id
             ]);
@@ -985,7 +1071,7 @@ export class InventoryService {
               data.barcode,
               data.name,
               data.description,
-              data.categoryId,
+              finalCategoryId,
               data.subcategoryId,
               data.uomId,
               data.productType,
@@ -1001,39 +1087,37 @@ export class InventoryService {
             insertedCount++;
           }
 
-          if (!data.id) {
-            await transactionManager.query(`
-              INSERT INTO inventory_costs (inventory_id, last_cost, average_cost, replacement_cost, updated_at)
-              VALUES ($1, $2, $3, $4, NOW())
-              ON CONFLICT (inventory_id) DO UPDATE SET
-                last_cost = EXCLUDED.last_cost,
-                average_cost = EXCLUDED.average_cost,
-                replacement_cost = EXCLUDED.replacement_cost,
-                updated_at = NOW()
-            `, [
-              productId,
-              data.costs.lastCost,
-              data.costs.averageCost,
-              data.costs.replacementCost
-            ]).catch(async () => {
-              const exists = await transactionManager.query('SELECT 1 FROM inventory_costs WHERE inventory_id = $1', [productId]);
-              if (exists.length > 0) {
-                await transactionManager.query(`
-                  UPDATE inventory_costs SET
-                    last_cost = $1,
-                    average_cost = $2,
-                    replacement_cost = $3,
-                    updated_at = NOW()
-                  WHERE inventory_id = $4
-                `, [data.costs.lastCost, data.costs.averageCost, data.costs.replacementCost, productId]);
-              } else {
-                await transactionManager.query(`
-                  INSERT INTO inventory_costs (inventory_id, last_cost, average_cost, replacement_cost)
-                  VALUES ($1, $2, $3, $4)
-                `, [productId, data.costs.lastCost, data.costs.averageCost, data.costs.replacementCost]);
-              }
-            });
-          }
+          await transactionManager.query(`
+            INSERT INTO inventory_costs (inventory_id, last_cost, average_cost, replacement_cost, updated_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (inventory_id) DO UPDATE SET
+              last_cost = EXCLUDED.last_cost,
+              average_cost = EXCLUDED.average_cost,
+              replacement_cost = EXCLUDED.replacement_cost,
+              updated_at = NOW()
+          `, [
+            productId,
+            data.costs.lastCost,
+            data.costs.averageCost,
+            data.costs.replacementCost
+          ]).catch(async () => {
+            const exists = await transactionManager.query('SELECT 1 FROM inventory_costs WHERE inventory_id = $1', [productId]);
+            if (exists.length > 0) {
+              await transactionManager.query(`
+                UPDATE inventory_costs SET
+                  last_cost = $1,
+                  average_cost = $2,
+                  replacement_cost = $3,
+                  updated_at = NOW()
+                WHERE inventory_id = $4
+              `, [data.costs.lastCost, data.costs.averageCost, data.costs.replacementCost, productId]);
+            } else {
+              await transactionManager.query(`
+                INSERT INTO inventory_costs (inventory_id, last_cost, average_cost, replacement_cost)
+                VALUES ($1, $2, $3, $4)
+              `, [productId, data.costs.lastCost, data.costs.averageCost, data.costs.replacementCost]);
+            }
+          });
 
           if (data.stock) {
             await transactionManager.query(`

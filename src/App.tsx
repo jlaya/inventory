@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   ClipboardCheck, Utensils, ShoppingBag, Bell,
   Layers, Package, AlertTriangle, ChevronRight, HelpCircle,
-  Truck, CheckCircle2, Download, X
+  Truck, CheckCircle2, Download, X, FileText
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -22,10 +22,22 @@ import PurchaseOrderUploader from './components/PurchaseOrderUploader';
 import AlertNotifications from './components/AlertNotifications';
 import LandingPage from './components/LandingPage';
 import AuditDashboard from './components/AuditDashboard';
+import Login from './components/Login';
+import ProductionOrder from './components/ProductionOrder';
 
 export default function App() {
   // --- VIEW STATE ---
   const [view, setView] = useState<'landing' | 'admin'>('landing');
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+
+  // --- AUTHENTICATION STATE ---
+  const [user, setUser] = useState<any>(() => {
+    const savedUser = localStorage.getItem('rango_tolerancia_user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  const [token, setToken] = useState<string | null>(() => {
+    return localStorage.getItem('rango_tolerancia_token');
+  });
 
   // --- SOCKET AUDIT STATE ---
   const [latestAudit, setLatestAudit] = useState<any>(null);
@@ -60,7 +72,7 @@ export default function App() {
   });
 
   // --- UI STATE ---
-  const [activeTab, setActiveTab] = useState<'tolerancia' | 'recetas' | 'ventas' | 'compras' | 'auditoria'>('tolerancia');
+  const [activeTab, setActiveTab] = useState<'tolerancia' | 'recetas' | 'ventas' | 'compras' | 'auditoria' | 'orden_produccion'>('tolerancia');
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState('todos');
 
@@ -88,11 +100,19 @@ export default function App() {
     return `${envUrl.replace(/\/$/, '')}/api/v1`;
   };
 
+  const getAuthHeaders = (extraHeaders: Record<string, string> = {}) => {
+    const headers: Record<string, string> = { ...extraHeaders };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  };
+
   // Fetch recipes (ingredients) from backend
   const fetchRecetas = async () => {
     try {
       const base = getApiUrl();
-      const res = await fetch(`${base}/ingredients`);
+      const res = await fetch(`${base}/ingredients`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Failed to fetch recipes');
       const data = await res.json();
 
@@ -117,7 +137,7 @@ export default function App() {
   const fetchInsumos = async () => {
     try {
       const base = getApiUrl();
-      const res = await fetch(`${base}/inventory`);
+      const res = await fetch(`${base}/inventory`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Failed to fetch inventory');
       const data = await res.json();
 
@@ -165,8 +185,8 @@ export default function App() {
       try {
         const base = getApiUrl();
         const [catsRes, uomsRes] = await Promise.all([
-          fetch(`${base}/categories`),
-          fetch(`${base}/units-of-measure`)
+          fetch(`${base}/categories`, { headers: getAuthHeaders() }),
+          fetch(`${base}/units-of-measure`, { headers: getAuthHeaders() })
         ]);
         if (catsRes.ok) {
           const cats = await catsRes.json();
@@ -184,7 +204,7 @@ export default function App() {
     loadMetadata();
     fetchInsumos();
     fetchRecetas();
-  }, []);
+  }, [token]);
 
   // Socket.io integration to listen for consolidated audits and restocking requests in real-time
   useEffect(() => {
@@ -192,6 +212,7 @@ export default function App() {
     console.log('Connecting to Socket.io namespace /inventory at:', socketUrl);
     const socket = io(socketUrl, {
       transports: ['websocket'],
+      auth: token ? { token } : undefined
     });
 
     socketRef.current = socket;
@@ -204,7 +225,9 @@ export default function App() {
       console.log('📢 Nueva auditoría consolidada recibida vía socket:', data);
       if (data && data.success) {
         setLatestAudit(data);
-        showToast('📋 Nueva auditoría consolidada disponible.', 'success');
+        if (data.criticalCount > 0) {
+          showToast('📋 Nueva auditoría consolidada disponible.', 'success');
+        }
       }
     });
 
@@ -245,9 +268,9 @@ export default function App() {
       const base = getApiUrl();
       const res = await fetch(`${base}/alerts/replenish`, {
         method: 'POST',
-        headers: {
+        headers: getAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({ warehouseId, items }),
       });
 
@@ -346,9 +369,9 @@ export default function App() {
       const base = getApiUrl();
       const res = await fetch(`${base}/inventory/${updated.id}`, {
         method: 'PUT',
-        headers: {
+        headers: getAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           name: updated.nombre,
           inventory_stock: {
@@ -400,9 +423,9 @@ export default function App() {
 
       const res = await fetch(`${base}/inventory`, {
         method: 'POST',
-        headers: {
+        headers: getAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(payload),
       });
 
@@ -451,6 +474,7 @@ export default function App() {
         const base = getApiUrl();
         const res = await fetch(`${base}/inventory/${id}`, {
           method: 'DELETE',
+          headers: getAuthHeaders(),
         });
         if (!res.ok) throw new Error('DB Delete failed');
       } catch (err) {
@@ -685,8 +709,48 @@ export default function App() {
 
   const sobreinventarioCount = insumos.filter((ins) => ins.stockSistema > ins.capacidadMaxima).length;
 
+  const handleLoginSuccess = (userPayload: any, tokenPayload: string) => {
+    setUser(userPayload);
+    setToken(tokenPayload);
+    localStorage.setItem('rango_tolerancia_user', JSON.stringify(userPayload));
+    localStorage.setItem('rango_tolerancia_token', tokenPayload);
+    setShowLoginModal(false);
+    setView('admin');
+    showToast(`¡Bienvenido, ${userPayload.name || userPayload.userName}!`, 'success');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('rango_tolerancia_user');
+    localStorage.removeItem('rango_tolerancia_token');
+    setView('landing');
+    showToast('Sesión cerrada correctamente.', 'success');
+  };
+
   if (view === 'landing') {
-    return <LandingPage onGoToAdmin={() => setView('admin')} />;
+    return (
+      <>
+        <LandingPage
+          onGoToAdmin={() => {
+            if (user && token) {
+              setView('admin');
+            } else {
+              setShowLoginModal(true);
+            }
+          }}
+        />
+        <AnimatePresence>
+          {showLoginModal && (
+            <Login
+              onLoginSuccess={handleLoginSuccess}
+              onClose={() => setShowLoginModal(false)}
+              apiUrl={getApiUrl()}
+            />
+          )}
+        </AnimatePresence>
+      </>
+    );
   }
 
   return (
@@ -698,6 +762,8 @@ export default function App() {
         onOpenAlerts={() => setAlertDrawerOpen(true)}
         onResetData={handleResetData}
         onGoBack={() => setView('landing')}
+        user={user}
+        onLogout={handleLogout}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -764,8 +830,9 @@ export default function App() {
             {[
               { id: 'tolerancia', label: 'Inventario', icon: ClipboardCheck },
               { id: 'ventas', label: 'Ventas', icon: ShoppingBag },
+              { id: 'orden_produccion', label: 'Orden de Producción', icon: FileText },
               { id: 'recetas', label: 'Recetas', icon: Utensils },
-              { id: 'auditoria', label: 'Auditoría de Stock', icon: ClipboardCheck },
+              { id: 'auditoria', label: 'Reportes', icon: ClipboardCheck },
               //{ id: 'compras', label: 'Órdenes de Compra', icon: Truck },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -854,6 +921,17 @@ export default function App() {
                   apiUrl={getApiUrl()}
                 />
               )}
+
+              {activeTab === 'orden_produccion' && (
+                <ProductionOrder
+                  apiUrl={getApiUrl()}
+                  token={token}
+                  latestRestockAudit={latestRestockAudit}
+                  setLatestRestockAudit={setLatestRestockAudit}
+                  onApproveRestock={handleApproveRestock}
+                  isRestockingLoading={isRestockingLoading}
+                />
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -877,7 +955,7 @@ export default function App() {
 
       {/* REAL-TIME SOCKET AUDIT NOTIFICATION BANNER */}
       <AnimatePresence>
-        {latestAudit && !showAuditModal && (
+        {latestAudit && !showAuditModal && latestAudit.criticalCount > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1096,7 +1174,7 @@ export default function App() {
 
       {/* REAL-TIME SOCKET RESTOCKING NOTIFICATION BANNER */}
       <AnimatePresence>
-        {latestRestockAudit && !showRestockModal && (
+        {latestRestockAudit && latestRestockAudit.items && latestRestockAudit.items.length > 0 && !showRestockModal && activeTab !== 'orden_produccion' && (
           <motion.div
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1127,20 +1205,14 @@ export default function App() {
 
             <div className="flex gap-2 mt-1">
               <button
-                onClick={() => setShowRestockModal(true)}
+                onClick={() => {
+                  setActiveTab('orden_produccion');
+                  setLatestRestockAudit(null);
+                }}
                 className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
               >
-                Ver Propuesta
+                Ver
               </button>
-              {latestRestockAudit.excelFileBase64 && (
-                <button
-                  onClick={() => handleDownloadExcel(latestRestockAudit.excelFileBase64, 'propuesta_reabastecimiento_critico.xlsx')}
-                  className="py-2.5 px-3 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Descargar Excel
-                </button>
-              )}
             </div>
           </motion.div>
         )}
@@ -1148,7 +1220,7 @@ export default function App() {
 
       {/* INFORMATIONAL RESTOCKING MODAL */}
       <AnimatePresence>
-        {showRestockModal && latestRestockAudit && (
+        {showRestockModal && latestRestockAudit && latestRestockAudit.items && latestRestockAudit.items.length > 0 && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}

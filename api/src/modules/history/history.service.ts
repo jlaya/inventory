@@ -352,6 +352,7 @@ export class HistoryService {
         s.quantity as sale_recipe_quantity,
         ing.name as recipe_name,
         im.recipe_code as recipe_code,
+        s.items as sale_items,
         (
           SELECT x 
           FROM jsonb_array_elements(im.items) x 

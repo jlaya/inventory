@@ -39,6 +39,12 @@ export default function InventoryManager({
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
+  const [dragActiveBulk, setDragActiveBulk] = useState(false);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [isBulkUploading, setIsBulkUploading] = useState(false);
+  const [bulkErrors, setBulkErrors] = useState<{ row: number; sku: string; message: string }[]>([]);
+
   // States for adding a new ingredient
   const [newNombre, setNewNombre] = useState('');
   const [newUnidad, setNewUnidad] = useState('Kg');
@@ -183,6 +189,66 @@ export default function InventoryManager({
     }
   };
 
+  const handleDragBulk = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActiveBulk(true);
+    } else if (e.type === "dragleave") {
+      setDragActiveBulk(false);
+    }
+  };
+
+  const handleDropBulk = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActiveBulk(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setBulkFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleChangeBulk = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      setBulkFile(e.target.files[0]);
+    }
+  };
+
+  const handleBulkUpload = async () => {
+    if (!bulkFile) return;
+    setIsBulkUploading(true);
+    setBulkErrors([]);
+    const formData = new FormData();
+    formData.append("file", bulkFile);
+
+    try {
+      const res = await fetch(`${apiUrl}/inventory/bulk/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await res.json();
+      if (!res.ok || result.success === false) {
+        if (result.errors && Array.isArray(result.errors)) {
+          setBulkErrors(result.errors);
+        } else {
+          setBulkErrors([{ row: 0, sku: "N/A", message: result.message || "Error al procesar el archivo." }]);
+        }
+      } else {
+        onPhysicalCountUploaded(result.message || `Carga masiva procesada: ${result.insertedCount || 0} creados, ${result.updatedCount || 0} actualizados.`);
+        setBulkFile(null);
+        setBulkErrors([]);
+        setShowBulkAddModal(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setBulkErrors([{ row: 0, sku: "N/A", message: "Ocurrió un error de red o de comunicación con el servidor." }]);
+    } finally {
+      setIsBulkUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
 
@@ -238,12 +304,12 @@ export default function InventoryManager({
           </button>
 
           <button
-            onClick={() => setShowAddModal(true)}
-            id="btn-nuevo-insumo"
-            className="w-full sm:w-auto px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 shadow-sm hover:shadow transition cursor-pointer"
+            onClick={() => setShowBulkAddModal(true)}
+            id="btn-carga-masiva-insumos"
+            className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 shadow-sm hover:shadow transition cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            Agregar Insumo
+            <FileSpreadsheet className="w-4 h-4" />
+            Importar Insumos
           </button>
         </div>
 
@@ -977,6 +1043,173 @@ export default function InventoryManager({
               </div>
 
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* MODAL: Carga Masiva de Insumos vía Excel */}
+      {showBulkAddModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]"
+          >
+            {/* Modal Header */}
+            <div className="bg-indigo-950 text-white px-6 py-4 flex items-center justify-between">
+              <h3 className="font-display font-bold text-base flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-indigo-400" />
+                Carga Masiva de Insumos (Catálogo)
+              </h3>
+              <button
+                onClick={() => {
+                  setBulkFile(null);
+                  setBulkErrors([]);
+                  setShowBulkAddModal(false);
+                }}
+                className="text-slate-400 hover:text-white cursor-pointer text-lg font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 text-xs text-slate-650 overflow-y-auto flex-1">
+
+              {/* Paso 1: Descargar Plantillas */}
+              <div className="space-y-2">
+                <span className="font-bold text-slate-800 text-xs block">1. Descargar Plantilla Oficial</span>
+                <p className="text-slate-500">
+                  Las plantillas oficiales permiten la carga masiva afectando directamente las tablas de información principal (**inventory**), costos (**inventory_costs**) y existencias por almacén (**inventory_stock**). Utiliza la plantilla de **Registro** para crear nuevos insumos masivamente o la plantilla de **Actualización** para modificar el catálogo existente.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <a
+                    href={`${apiUrl}/inventory/bulk/template-register`}
+                    download="plantilla_registro_insumos.xlsx"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-750 font-semibold rounded-lg transition"
+                  >
+                    <Download className="w-3.5 h-3.5 text-indigo-500" />
+                    Plantilla Registro (Nuevos)
+                  </a>
+                  <a
+                    href={`${apiUrl}/inventory/bulk/template-update`}
+                    download="plantilla_actualizacion_insumos.xlsx"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-semibold rounded-lg transition"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-500" />
+                    Plantilla Actualización (Modificar)
+                  </a>
+                </div>
+              </div>
+
+              {/* Paso 2: Zona de Arrastrar Archivo */}
+              <div className="space-y-2">
+                <span className="font-bold text-slate-800 text-xs block">2. Seleccionar o Arrastrar Archivo Excel</span>
+                <div
+                  onDragEnter={handleDragBulk}
+                  onDragOver={handleDragBulk}
+                  onDragLeave={handleDragBulk}
+                  onDrop={handleDropBulk}
+                  className={`border-2 border-dashed rounded-xl p-6 text-center transition ${dragActiveBulk
+                    ? 'border-indigo-500 bg-indigo-50/50'
+                    : bulkFile
+                      ? 'border-indigo-300 bg-indigo-50/10'
+                      : 'border-slate-200 hover:border-slate-300 bg-slate-50/30'
+                    }`}
+                >
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls"
+                    onChange={handleChangeBulk}
+                    className="hidden"
+                    id="bulk-excel-file-upload"
+                  />
+                  <label htmlFor="bulk-excel-file-upload" className="cursor-pointer space-y-2 block">
+                    <div className="flex justify-center">
+                      <FileSpreadsheet className={`w-10 h-10 ${bulkFile ? 'text-indigo-500' : 'text-slate-400'}`} />
+                    </div>
+                    {bulkFile ? (
+                      <div>
+                        <p className="font-bold text-slate-800">{bulkFile.name}</p>
+                        <p className="text-[10px] text-slate-400">{(bulkFile.size / 1024).toFixed(1)} KB</p>
+                        <span className="text-[10px] text-indigo-600 font-medium underline mt-1 block">Arrastra otro archivo o haz clic para cambiar</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="font-semibold text-slate-700">Arrastra tu archivo Excel aquí</p>
+                        <p className="text-slate-400 text-[10px] mt-0.5">o haz clic para explorar en tu computadora</p>
+                      </div>
+                    )}
+                  </label>
+                </div>
+              </div>
+
+              {/* Warnings and Errors List (Real-time Feedback) */}
+              {bulkErrors.length > 0 && (
+                <div className="space-y-2 border border-rose-100 bg-rose-50/50 p-4 rounded-xl max-h-48 overflow-y-auto">
+                  <h4 className="font-bold text-rose-800 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4 text-rose-600" />
+                    Se detectaron {bulkErrors.length} observaciones en el archivo:
+                  </h4>
+                  <ul className="space-y-2 divide-y divide-rose-100/50 font-mono text-[11px] text-rose-700">
+                    {bulkErrors.map((err, idx) => (
+                      <li key={idx} className="pt-2 first:pt-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold bg-rose-200 text-rose-800 px-1.5 py-0.5 rounded text-[10px]">
+                            Fila {err.row}
+                          </span>
+                          {err.sku && err.sku !== 'N/A' && (
+                            <span className="font-bold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px]">
+                              SKU: {err.sku}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-slate-650 font-sans leading-normal">{err.message}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+            </div>
+
+            {/* Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkFile(null);
+                  setBulkErrors([]);
+                  setShowBulkAddModal(false);
+                }}
+                className="w-1/2 py-2.5 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 transition font-medium cursor-pointer"
+                disabled={isBulkUploading}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkUpload}
+                disabled={!bulkFile || isBulkUploading}
+                className={`w-1/2 py-2.5 rounded-xl transition font-medium shadow-sm flex items-center justify-center gap-1.5 cursor-pointer ${!bulkFile || isBulkUploading
+                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                  : 'bg-indigo-600 hover:bg-indigo-750 text-white shadow-md'
+                  }`}
+              >
+                {isBulkUploading ? (
+                  <>
+                    <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
+                    Procesando Catálogo...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-3.5 h-3.5" />
+                    Procesar y Cargar
+                  </>
+                )}
+              </button>
+            </div>
+
           </motion.div>
         </div>
       )}

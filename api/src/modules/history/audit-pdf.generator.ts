@@ -19,6 +19,7 @@ export interface AuditRowSale {
   sale_recipe_quantity: number;
   recipe_name: string;
   recipe_code: string;
+  sale_items?: Record<string, any>;
   movement_item_detail?: {
     uom?: string;
     name?: string;
@@ -128,23 +129,37 @@ export function generateAuditPdfReport(
 
   currentY += cardHeight + 20;
 
-  // --- SECCIÓN 1: SALIDAS POR VENTAS ---
-  doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text('1. SALIDAS DE INVENTARIO POR CONCEPTOS DE VENTA (TABLA HISTORY)', 35, currentY);
+  // --- SECCIÓN 1.1: VENTAS REGISTRADAS (RESUMEN COMERCIAL) ---
+  doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text('1.1. VENTAS REGISTRADAS (RESUMEN COMERCIAL)', 35, currentY);
   currentY += 15;
 
-  // Definición de columnas de la tabla de salidas
-  // Ancho total = 525. Columnas:
-  // Fecha (50), Insumo SKU/Nombre (110), Cantidad (50), Stock Prev->Act (80), Detalle Receta (170), Costo Total (65)
-  const colSales = [
+  const uniqueSalesMap = new Map<string, any>();
+  sales.forEach((s) => {
+    if (s.sale_code && !uniqueSalesMap.has(s.sale_code)) {
+      uniqueSalesMap.set(s.sale_code, {
+        sale_code: s.sale_code,
+        movement_date: s.movement_date,
+        recipe_name: s.recipe_name || 'Descuento Directo',
+        quantity: Number(s.sale_recipe_quantity || s.quantity),
+        sale_items: s.sale_items,
+      });
+    }
+  });
+  const uniqueSales = Array.from(uniqueSalesMap.values());
+
+  const colSalesCommercial = [
     { name: 'Fecha', x: 35, w: 50 },
-    { name: 'Insumo (SKU)', x: 85, w: 110 },
-    { name: 'Cant.', x: 195, w: 50, align: 'right' },
-    { name: 'Stock Prev->Act', x: 250, w: 80, align: 'center' },
-    { name: 'Detalle Receta (Decomp. jsonb)', x: 335, w: 140 },
-    { name: 'Costo Total', x: 480, w: 80, align: 'right' },
+    { name: 'Código Venta', x: 85, w: 80 },
+    { name: 'Producto / Receta', x: 165, w: 135 },
+    { name: 'Cant.', x: 300, w: 35, align: 'right' },
+    { name: 'Venta Neta', x: 335, w: 50, align: 'right' },
+    { name: 'Impuestos', x: 385, w: 45, align: 'right' },
+    { name: 'Total', x: 430, w: 50, align: 'right' },
+    { name: 'Costo', x: 480, w: 45, align: 'right' },
+    { name: '% Util.', x: 525, w: 35, align: 'right' },
   ];
 
-  const drawTableHeader = (cols: typeof colSales, y: number) => {
+  const drawTableHeaderCommercial = (cols: typeof colSalesCommercial, y: number) => {
     doc.rect(35, y, 525, 18).fill(secondaryColor);
     doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
     cols.forEach(col => {
@@ -155,55 +170,228 @@ export function generateAuditPdfReport(
     });
   };
 
-  drawTableHeader(colSales, currentY);
+  drawTableHeaderCommercial(colSalesCommercial, currentY);
   currentY += 18;
 
+  const getMetric = (items: any, keys: string[]): number => {
+    if (!items) return 0;
+    for (const k of keys) {
+      if (items[k] !== undefined) {
+        const val = items[k];
+        const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/[$\s%,]/g, ''));
+        return isNaN(num) ? 0 : num;
+      }
+    }
+    return 0;
+  };
+
   let alternateRow = false;
+  if (uniqueSales.length === 0) {
+    doc.fillColor(darkGray).fontSize(8).font('Helvetica-Oblique').text('No se encontraron ventas registradas en el rango seleccionado.', 45, currentY + 8);
+    currentY += 25;
+  } else {
+    for (const sale of uniqueSales) {
+      const rowHeight = sale.sale_items ? 90 : 20;
+      if (currentY + rowHeight > 730) {
+        doc.addPage();
+        currentY = drawPageHeader(doc.bufferedPageRange().count);
+        drawTableHeaderCommercial(colSalesCommercial, currentY);
+        currentY += 18;
+      }
+
+      doc.rect(35, currentY, 525, rowHeight).fill(alternateRow ? lightGray : '#ffffff');
+      doc.fillColor(darkGray).fontSize(7).font('Helvetica');
+
+      const vn = getMetric(sale.sale_items, ['Venta Neta', 'venta_neta']);
+      const imp = getMetric(sale.sale_items, ['Impuestos', 'impuestos']);
+      const tot = getMetric(sale.sale_items, ['Venta Neta + Impuesto', 'venta_neta_mas_impuesto', 'Venta Neta + Impuestos']);
+      const uc = getMetric(sale.sale_items, ['Ultimo Costo', 'ultimo_costo', 'Último Costo']);
+      const uup = getMetric(sale.sale_items, ['% Utilidad Ultimo Costo', '% Utilidad Ultimo']);
+
+      // Fecha
+      doc.text(sale.movement_date, colSalesCommercial[0].x, currentY + 6);
+      // Código Venta
+      doc.font('Helvetica-Bold').text(sale.sale_code, colSalesCommercial[1].x, currentY + 6);
+      doc.font('Helvetica');
+      // Producto/Receta
+      doc.text(sale.recipe_name.toUpperCase(), colSalesCommercial[2].x, currentY + 6, { width: colSalesCommercial[2].w, height: 12 });
+      // Cantidad
+      doc.text(`${sale.quantity} u`, colSalesCommercial[3].x, currentY + 6, { width: colSalesCommercial[3].w, align: 'right' });
+      // Venta Neta
+      doc.text(`$${vn.toFixed(2)}`, colSalesCommercial[4].x, currentY + 6, { width: colSalesCommercial[4].w, align: 'right' });
+      // Impuestos
+      doc.text(`$${imp.toFixed(2)}`, colSalesCommercial[5].x, currentY + 6, { width: colSalesCommercial[5].w, align: 'right' });
+      // Total
+      doc.font('Helvetica-Bold').text(`$${tot.toFixed(2)}`, colSalesCommercial[6].x, currentY + 6, { width: colSalesCommercial[6].w, align: 'right' });
+      doc.font('Helvetica');
+      // Costo
+      doc.text(`$${uc.toFixed(2)}`, colSalesCommercial[7].x, currentY + 6, { width: colSalesCommercial[7].w, align: 'right' });
+      // % Util
+      doc.fillColor('#0f766e').font('Helvetica-Bold').text(`${uup.toFixed(1)}%`, colSalesCommercial[8].x, currentY + 6, { width: colSalesCommercial[8].w, align: 'right' });
+      doc.fillColor(darkGray).font('Helvetica');
+
+      // Draw detail cards if sale_items exists
+      if (sale.sale_items) {
+        const desc = getMetric(sale.sale_items, ['Descuento']);
+        const descP = getMetric(sale.sale_items, ['% Descuento']);
+        const cantP = getMetric(sale.sale_items, ['% Cantidad']);
+        const ventP = getMetric(sale.sale_items, ['% Ventas']);
+        const cp = getMetric(sale.sale_items, ['Costo Promedio', 'costo_promedio']);
+        const cpp = getMetric(sale.sale_items, ['% Costo Promedio']);
+        const ucprom = getMetric(sale.sale_items, ['Utilidad Costo Promedio', 'Utilidad Costo']);
+        const ucpp = getMetric(sale.sale_items, ['% Utilidad Costo Promedio', '% Utilidad Costo']);
+        const ucp = getMetric(sale.sale_items, ['% Ultimo Costo', '% último costo']);
+        const uu = getMetric(sale.sale_items, ['Utilidad Ultimo Costo', 'Utilidad Ultimo']);
+
+        // Draw Title
+        doc.fillColor('#64748b').fontSize(6.5).font('Helvetica-Bold').text('DETALLE COMERCIAL COMPLETO DE LA VENTA', 43, currentY + 23);
+
+        // Draw left emerald border strip
+        doc.rect(35, currentY + 32, 3, 52).fill('#10b981');
+
+        // Draw main white rounded box container
+        doc.roundedRect(43, currentY + 32, 517, 52, 4).fill('#ffffff');
+        doc.roundedRect(43, currentY + 32, 517, 52, 4).strokeColor('#e2e8f0').lineWidth(0.4).stroke();
+
+        const cardY = currentY + 36;
+        const cardW = 97;
+        const cardH = 44;
+        const cardGap = 6.25;
+
+        for (let i = 0; i < 5; i++) {
+          const cardX = 47 + i * (cardW + cardGap);
+          // Draw card background
+          doc.roundedRect(cardX, cardY, cardW, cardH, 2).fill('#f8fafc');
+          doc.roundedRect(cardX, cardY, cardW, cardH, 2).strokeColor('#e2e8f0').lineWidth(0.25).stroke();
+
+          // Card Title
+          doc.fillColor('#64748b').fontSize(5.5).font('Helvetica-Bold');
+          if (i === 0) {
+            doc.text('VENTA COMERCIAL', cardX + 4, cardY + 4);
+            doc.fillColor('#475569').fontSize(6.5).font('Helvetica');
+            doc.text('Venta Neta:', cardX + 4, cardY + 14);
+            doc.text('Impuestos:', cardX + 4, cardY + 23);
+            doc.font('Helvetica-Bold').text('Total:', cardX + 4, cardY + 32);
+
+            doc.text(`$${vn.toFixed(2)}`, cardX + cardW - 4, cardY + 14, { width: 50, align: 'right' });
+            doc.text(`$${imp.toFixed(2)}`, cardX + cardW - 4, cardY + 23, { width: 50, align: 'right' });
+            doc.text(`$${tot.toFixed(2)}`, cardX + cardW - 4, cardY + 32, { width: 50, align: 'right' });
+          } else if (i === 1) {
+            doc.text('COSTO & UTIL. (ÚLT.)', cardX + 4, cardY + 4);
+            doc.fillColor('#475569').fontSize(6.5).font('Helvetica');
+            doc.text('Costo:', cardX + 4, cardY + 14);
+            doc.text('Utilidad:', cardX + 4, cardY + 23);
+
+            // Cost value & percentage
+            doc.font('Helvetica-Bold').text(`$${uc.toFixed(2)}`, cardX + cardW - 28, cardY + 14, { width: 40, align: 'right' });
+            doc.fillColor('#94a3b8').font('Helvetica').fontSize(5.5).text(`(${ucp.toFixed(1)}%)`, cardX + cardW - 4, cardY + 14.5, { width: 25, align: 'right' });
+
+            // Utility value & percentage
+            doc.fillColor('#10b981').font('Helvetica-Bold').fontSize(6.5).text(`$${uu.toFixed(2)}`, cardX + cardW - 28, cardY + 23, { width: 40, align: 'right' });
+            doc.fontSize(5.5).text(`(${uup.toFixed(1)}%)`, cardX + cardW - 4, cardY + 23.5, { width: 25, align: 'right' });
+          } else if (i === 2) {
+            doc.text('COSTO & UTIL. (PROM.)', cardX + 4, cardY + 4);
+            doc.fillColor('#475569').fontSize(6.5).font('Helvetica');
+            doc.text('Costo:', cardX + 4, cardY + 14);
+            doc.text('Utilidad:', cardX + 4, cardY + 23);
+
+            // Cost value & percentage
+            doc.font('Helvetica-Bold').text(`$${cp.toFixed(2)}`, cardX + cardW - 28, cardY + 14, { width: 40, align: 'right' });
+            doc.fillColor('#94a3b8').font('Helvetica').fontSize(5.5).text(`(${cpp.toFixed(1)}%)`, cardX + cardW - 4, cardY + 14.5, { width: 25, align: 'right' });
+
+            // Utility value & percentage
+            doc.fillColor('#0d9488').font('Helvetica-Bold').fontSize(6.5).text(`$${ucprom.toFixed(2)}`, cardX + cardW - 28, cardY + 23, { width: 40, align: 'right' });
+            doc.fontSize(5.5).text(`(${ucpp.toFixed(1)}%)`, cardX + cardW - 4, cardY + 23.5, { width: 25, align: 'right' });
+          } else if (i === 3) {
+            doc.text('DESCUENTOS', cardX + 4, cardY + 4);
+            doc.fillColor('#475569').fontSize(6.5).font('Helvetica');
+            doc.text('Valor:', cardX + 4, cardY + 14);
+            doc.text('Porcentaje:', cardX + 4, cardY + 23);
+
+            doc.font('Helvetica-Bold').text(`$${desc.toFixed(2)}`, cardX + cardW - 4, cardY + 14, { width: 50, align: 'right' });
+            doc.text(`${descP.toFixed(2)}%`, cardX + cardW - 4, cardY + 23, { width: 50, align: 'right' });
+          } else if (i === 4) {
+            doc.text('PARTICIPACIÓN VENTAS', cardX + 4, cardY + 4);
+            doc.fillColor('#475569').fontSize(6.5).font('Helvetica');
+            doc.text('% Cantidad:', cardX + 4, cardY + 14);
+            doc.text('% Ventas:', cardX + 4, cardY + 23);
+
+            doc.font('Helvetica-Bold').text(`${cantP.toFixed(2)}%`, cardX + cardW - 4, cardY + 14, { width: 50, align: 'right' });
+            doc.text(`${ventP.toFixed(2)}%`, cardX + cardW - 4, cardY + 23, { width: 50, align: 'right' });
+          }
+        }
+      }
+
+      doc.strokeColor(borderGray).lineWidth(0.3).moveTo(35, currentY + rowHeight).lineTo(560, currentY + rowHeight).stroke();
+
+      currentY += rowHeight;
+      alternateRow = !alternateRow;
+    }
+  }
+
+  // --- SECCIÓN 1.2: INSUMOS AFECTADOS POR VENTAS (SALIDAS DE STOCK) ---
+  currentY += 25;
+  if (currentY > 680) {
+    doc.addPage();
+    currentY = drawPageHeader(doc.bufferedPageRange().count);
+  }
+
+  doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text('1.2. INSUMOS AFECTADOS POR VENTAS (SALIDAS DE STOCK)', 35, currentY);
+  currentY += 15;
+
+  const colSalesIngredients = [
+    { name: 'Fecha', x: 35, w: 50 },
+    { name: 'Código Venta', x: 85, w: 80 },
+    { name: 'Insumo (SKU)', x: 165, w: 135 },
+    { name: 'Cant. Consumida', x: 300, w: 60, align: 'right' },
+    { name: 'Stock Prev->Act', x: 360, w: 90, align: 'center' },
+    { name: 'Costo Total Insumo', x: 450, w: 110, align: 'right' },
+  ];
+
+  const drawTableHeaderIngredients = (cols: typeof colSalesIngredients, y: number) => {
+    doc.rect(35, y, 525, 18).fill('#64748b'); // Slate gray
+    doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
+    cols.forEach(col => {
+      doc.text(col.name, col.x, y + 5, {
+        width: col.w,
+        align: (col.align || 'left') as any,
+      });
+    });
+  };
+
+  drawTableHeaderIngredients(colSalesIngredients, currentY);
+  currentY += 18;
+
+  alternateRow = false;
   if (salesCount === 0) {
-    doc.fillColor(darkGray).fontSize(8).font('Helvetica-Oblique').text('No se encontraron registros de salidas de ventas para el rango seleccionado.', 45, currentY + 8);
+    doc.fillColor(darkGray).fontSize(8).font('Helvetica-Oblique').text('No se encontraron registros de salidas de insumos para el rango seleccionado.', 45, currentY + 8);
     currentY += 25;
   } else {
     for (const sale of sales) {
       if (currentY > 730) {
         doc.addPage();
         currentY = drawPageHeader(doc.bufferedPageRange().count);
-        drawTableHeader(colSales, currentY);
+        drawTableHeaderIngredients(colSalesIngredients, currentY);
         currentY += 18;
       }
 
-      // Dibujar fondo de fila
       doc.rect(35, currentY, 525, 24).fill(alternateRow ? lightGray : '#ffffff');
       doc.fillColor(darkGray).fontSize(7).font('Helvetica');
 
       // Fecha
-      doc.text(sale.movement_date, colSales[0].x, currentY + 6);
-
+      doc.text(sale.movement_date, colSalesIngredients[0].x, currentY + 6);
+      // Código Venta
+      doc.text(sale.sale_code || 'Directo', colSalesIngredients[1].x, currentY + 6);
       // Insumo (SKU)
       const insumoText = `${sale.inventory_name.toUpperCase()}\n(${sale.inventory_sku})`;
-      doc.text(insumoText, colSales[1].x, currentY + 4, { width: colSales[1].w, height: 18 });
+      doc.text(insumoText, colSalesIngredients[2].x, currentY + 4, { width: colSalesIngredients[2].w, height: 18 });
+      // Cant. Consumida
+      doc.text(`-${Number(sale.quantity).toFixed(3)} ${sale.uom.toUpperCase()}`, colSalesIngredients[3].x, currentY + 6, { width: colSalesIngredients[3].w, align: 'right' });
+      // Stock Prev->Act
+      doc.text(`${Number(sale.previous_stock).toFixed(2)} → ${Number(sale.current_stock).toFixed(2)}`, colSalesIngredients[4].x, currentY + 6, { width: colSalesIngredients[4].w, align: 'center' });
+      // Costo Total Insumo
+      doc.text(`$${Number(sale.total_cost).toFixed(2)}`, colSalesIngredients[5].x, currentY + 6, { width: colSalesIngredients[5].w, align: 'right' });
 
-      // Cantidad con UOM
-      const qtyText = `${Number(sale.quantity).toFixed(2)}\n${sale.uom.toUpperCase()}`;
-      doc.text(qtyText, colSales[2].x, currentY + 4, { width: colSales[2].w, align: 'right' });
-
-      // Stock anterior -> nuevo
-      const stockText = `${Number(sale.previous_stock).toFixed(2)} →\n${Number(sale.current_stock).toFixed(2)}`;
-      doc.text(stockText, colSales[3].x, currentY + 4, { width: colSales[3].w, align: 'center' });
-
-      // Detalle Receta (Decomp jsonb)
-      let recipeDetailText = 'N/A';
-      if (sale.recipe_name) {
-        recipeDetailText = `${sale.recipe_name.toUpperCase()}\n${sale.sale_code || 'Venta'}`;
-      } else if (sale.notes) {
-        recipeDetailText = sale.notes;
-      }
-      doc.text(recipeDetailText, colSales[4].x, currentY + 4, { width: colSales[4].w, height: 18 });
-
-      // Costo Total
-      const costText = `$${Number(sale.total_cost).toFixed(2)}`;
-      doc.text(costText, colSales[5].x, currentY + 8, { width: colSales[5].w, align: 'right' });
-
-      // Línea divisoria muy sutil
       doc.strokeColor(borderGray).lineWidth(0.3).moveTo(35, currentY + 24).lineTo(560, currentY + 24).stroke();
 
       currentY += 24;
@@ -249,7 +437,7 @@ export function generateAuditPdfReport(
 
   alternateRow = false;
   if (inputsCount === 0) {
-    doc.fillColor(darkGray).fontSize(8).font('Helvetica-Oblique').text('No se encontraron registros de entradas de abastecimiento para el almacén central.', 45, currentY + 8);
+    doc.fillColor(darkGray).fontSize(8).font('Helvetica-Oblique').text('No se registran entradas de abastecimiento ni ingresos de insumos al almacén central en el periodo especificado.', 45, currentY + 8);
     currentY += 25;
   } else {
     for (const input of inputs) {

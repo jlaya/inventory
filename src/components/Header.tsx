@@ -1,15 +1,17 @@
 import React from 'react';
-import { ClipboardCheck, Bell, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { AlertaAlmacen } from '../types';
+import { ClipboardCheck, Bell, ShieldCheck, AlertTriangle, LogOut } from 'lucide-react';
+import { AlertaAlmacen, User as UserType } from '../types';
 
 interface HeaderProps {
   alertas: AlertaAlmacen[];
   onOpenAlerts: () => void;
   onResetData: () => void;
   onGoBack?: () => void;
+  user?: UserType | null;
+  onLogout?: () => void;
 }
 
-export default function Header({ alertas, onOpenAlerts, onResetData, onGoBack }: HeaderProps) {
+export default function Header({ alertas, onOpenAlerts, onResetData, onGoBack, user, onLogout }: HeaderProps) {
   const alertasNoLeidas = alertas.filter((a) => !a.leido).length;
 
   return (
@@ -39,11 +41,40 @@ export default function Header({ alertas, onOpenAlerts, onResetData, onGoBack }:
           </div>
 
           {/* Quick Actions & Notifications */}
-          <div className="flex items-center gap-3 self-end md:self-auto">
+          <div className="flex items-center gap-4 self-end md:self-auto">
+            {user && (
+              <div className="flex items-center gap-3 bg-slate-800/40 pl-3 pr-2 py-1.5 rounded-xl border border-slate-700/30">
+                {user.avatar && (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-8 h-8 rounded-lg object-cover border border-slate-600"
+                  />
+                )}
+                <div className="text-left hidden sm:block">
+                  <div className="text-xs font-bold text-slate-100 leading-tight">
+                    {user.name}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 leading-none mt-0.5 uppercase tracking-wide">
+                    {user.charge || 'Usuario'} {user.warehouse ? `• ${user.warehouse.name}` : ''}
+                  </div>
+                </div>
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    title="Cerrar sesión"
+                    className="p-1 rounded text-slate-400 hover:text-red-400 hover:bg-slate-800 transition cursor-pointer ml-1"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
+
             {onGoBack && (
               <button
                 onClick={onGoBack}
-                className="text-xs font-medium text-slate-400 hover:text-white px-3 py-2 rounded-lg bg-slate-800/40 hover:bg-slate-800 transition border border-slate-700/50 cursor-pointer"
+                className="text-xs font-medium text-slate-400 hover:text-white px-3.5 py-2 rounded-xl bg-slate-800/40 hover:bg-slate-805 transition border border-slate-700/50 cursor-pointer"
                 id="btn-volver-landing"
               >
                 Volver al Sitio

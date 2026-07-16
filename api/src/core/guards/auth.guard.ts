@@ -28,7 +28,7 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
     if (!token) {
-      //throw new UnauthorizedException('Token de autenticación no proporcionado');
+      throw new UnauthorizedException('Token de autenticación no proporcionado');
       console.log('Token de autenticación no proporcionado');
     }
     try {
@@ -38,7 +38,7 @@ export class AuthGuard implements CanActivate {
       // Attach the user payload to the request object
       request['user'] = payload;
     } catch (error) {
-      //throw new UnauthorizedException('Token inválido, expirado o corrupto');
+      throw new UnauthorizedException('Token inválido, expirado o corrupto');
     }
     return true;
   }

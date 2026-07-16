@@ -37,6 +37,12 @@ export class AlertsController {
   }
 
   @Public()
+  @Get('restocking-data')
+  async getRestockingData() {
+    return await this.alertsService.runRestockingAudit(false);
+  }
+
+  @Public()
   @Get('config')
   async getConfig() {
     return {
