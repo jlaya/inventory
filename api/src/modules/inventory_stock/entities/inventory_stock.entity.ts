@@ -19,6 +19,9 @@ export class InventoryStock {
   @Column('numeric', { precision: 18, scale: 4, default: 0 })
   quantity: number;
 
+  @Column('numeric', { precision: 18, scale: 4, default: 0, nullable: true })
+  conteo: number;
+
   @Column({ name: 'minimum_stock', type: 'numeric', default: 0 })
   minimumStock: number;
 

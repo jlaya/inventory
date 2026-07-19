@@ -431,8 +431,14 @@ export class SalesService {
               const isCentral = warehouse.code === 'WH-CENTRAL';
               const previousStock = Number(item.stock.quantity);
               const newQty = previousStock - item.consumed;
-              item.stock.quantity = isCentral ? newQty : Math.max(0, newQty);
-              await queryRunner.manager.save(item.stock);
+              const finalQty = isCentral ? newQty : Math.max(0, newQty);
+              
+              await queryRunner.manager.update(
+                InventoryStock,
+                { id: item.stock.id },
+                { quantity: finalQty }
+              );
+              item.stock.quantity = finalQty;
 
               movementItems.push({
                 inventory_id: Number(item.inventory.id),
@@ -522,6 +528,13 @@ export class SalesService {
 
       job.status = 'completed';
       job.progress = 100;
+
+      // Notify clients via WebSocket
+      try {
+        this.alertsService.emitSalesProcessed({ success: true, jobId });
+      } catch (wsErr) {
+        console.error('Error emitting sales_processed event:', wsErr);
+      }
 
       // 5. Send reports to Telegram
       try {

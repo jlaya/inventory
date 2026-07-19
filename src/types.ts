@@ -7,6 +7,8 @@ export interface Insumo {
   toleranciaPct: number; // Rango de tolerancia recomendado (e.g., 5 para ±5%, 10 para ±10%)
   puntoReorden: number; // Punto crítico de reorden (Notificación de desabasto)
   capacidadMaxima: number; // Capacidad para detectar sobreinventario
+  quantity?: number; // Cantidad actual de stock en base de datos
+  conteo?: number; // Cantidad física contada
 }
 
 export interface RecetaIngrediente {

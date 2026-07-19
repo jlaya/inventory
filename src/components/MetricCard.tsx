@@ -25,39 +25,54 @@ export default function MetricCard({
 }: MetricCardProps) {
   const colorMap = {
     blue: {
-      bg: 'bg-blue-50 border-blue-100',
-      text: 'text-blue-900',
-      number: 'text-blue-600',
-      iconBg: 'bg-blue-100 text-blue-600',
-      activeBorder: 'ring-2 ring-blue-500 border-blue-500',
+      bg: 'bg-blue-600 border-blue-700 text-white',
+      title: 'text-blue-100',
+      number: 'text-white',
+      iconBg: 'bg-white/20 text-white',
+      activeBorder: 'ring-4 ring-blue-300 border-white',
+      borderT: 'border-blue-500/50',
+      subtitle: 'text-blue-100/90',
+      badge: 'bg-white text-blue-900',
     },
     yellow: {
-      bg: 'bg-amber-50 border-amber-100',
-      text: 'text-amber-900',
-      number: 'text-amber-600',
-      iconBg: 'bg-amber-100 text-amber-600',
-      activeBorder: 'ring-2 ring-amber-500 border-amber-500',
+      bg: 'bg-amber-500 border-amber-600 text-amber-950',
+      title: 'text-amber-950/75',
+      number: 'text-amber-950',
+      iconBg: 'bg-amber-950/10 text-amber-950',
+      activeBorder: 'ring-4 ring-amber-300 border-amber-950',
+      borderT: 'border-amber-400/50',
+      subtitle: 'text-amber-900',
+      badge: 'bg-amber-950 text-white',
     },
     red: {
-      bg: 'bg-rose-50 border-rose-100',
-      text: 'text-rose-900',
-      number: 'text-rose-600',
-      iconBg: 'bg-rose-100 text-rose-600',
-      activeBorder: 'ring-2 ring-rose-500 border-rose-500',
+      bg: 'bg-rose-600 border-rose-700 text-white',
+      title: 'text-rose-100',
+      number: 'text-white',
+      iconBg: 'bg-white/20 text-white',
+      activeBorder: 'ring-4 ring-rose-300 border-white',
+      borderT: 'border-rose-500/50',
+      subtitle: 'text-rose-100/90',
+      badge: 'bg-white text-rose-900',
     },
     green: {
-      bg: 'bg-emerald-50 border-emerald-100',
-      text: 'text-emerald-900',
-      number: 'text-emerald-600',
-      iconBg: 'bg-emerald-100 text-emerald-600',
-      activeBorder: 'ring-2 ring-emerald-500 border-emerald-500',
+      bg: 'bg-emerald-600 border-emerald-700 text-white',
+      title: 'text-emerald-100',
+      number: 'text-white',
+      iconBg: 'bg-white/20 text-white',
+      activeBorder: 'ring-4 ring-emerald-300 border-white',
+      borderT: 'border-emerald-500/50',
+      subtitle: 'text-emerald-100/90',
+      badge: 'bg-white text-emerald-900',
     },
     purple: {
-      bg: 'bg-purple-50 border-purple-100',
-      text: 'text-purple-900',
-      number: 'text-purple-600',
-      iconBg: 'bg-purple-100 text-purple-600',
-      activeBorder: 'ring-2 ring-purple-500 border-purple-500',
+      bg: 'bg-purple-600 border-purple-700 text-white',
+      title: 'text-purple-100',
+      number: 'text-white',
+      iconBg: 'bg-white/20 text-white',
+      activeBorder: 'ring-4 ring-purple-300 border-white',
+      borderT: 'border-purple-500/50',
+      subtitle: 'text-purple-100/90',
+      badge: 'bg-white text-purple-900',
     },
   };
 
@@ -69,13 +84,13 @@ export default function MetricCard({
       whileTap={{ scale: 0.99 }}
       onClick={onClick}
       id={id}
-      className={`p-5 rounded-2xl border bg-white shadow-sm transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+      className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between ${
         activo ? scheme.activeBorder + ' shadow-md' : 'hover:shadow-md'
       } ${scheme.bg}`}
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-mono font-medium text-slate-500 uppercase tracking-wider">
+          <p className={`text-xs font-mono font-medium uppercase tracking-wider ${scheme.title}`}>
             {titulo}
           </p>
           <p className="text-3xl font-display font-bold mt-1 tracking-tight">
@@ -86,10 +101,10 @@ export default function MetricCard({
           <Icono className="w-5 h-5" />
         </div>
       </div>
-      <div className="mt-4 pt-3 border-t border-slate-150/40 flex items-center justify-between">
-        <span className="text-xs text-slate-600 font-sans">{subtitulo}</span>
+      <div className={`mt-4 pt-3 border-t flex items-center justify-between ${scheme.borderT}`}>
+        <span className={`text-xs font-sans ${scheme.subtitle}`}>{subtitulo}</span>
         {activo && (
-          <span className="text-[10px] uppercase font-mono font-bold bg-slate-900 text-white px-2 py-0.5 rounded">
+          <span className={`text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded ${scheme.badge}`}>
             Filtrando
           </span>
         )}

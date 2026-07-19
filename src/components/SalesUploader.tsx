@@ -590,7 +590,7 @@ export default function SalesUploader({
               <div>
                 <strong className="text-slate-200 font-semibold block">Deducción de Stock (A)</strong>
                 <span className="text-slate-400 block mt-0.5">
-                  Resta el total neto de forma atómica del <strong>Stock del Sistema (A)</strong>.
+                  Resta el total neto de forma atómica del <strong>Stock Teorico (A)</strong>.
                 </span>
               </div>
             </div>

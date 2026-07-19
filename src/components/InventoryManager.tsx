@@ -6,7 +6,7 @@ import {
   Upload, Download, FileSpreadsheet
 } from 'lucide-react';
 import { Insumo } from '../types';
-import { calcularVariacion, obtenerLimitesTolerancia, determinarEstadoTolerancia } from '../utils/stockUtils';
+import { calcularVariacion, determinarEstadoTolerancia } from '../utils/stockUtils';
 
 interface InventoryManagerProps {
   insumos: Insumo[];
@@ -67,9 +67,10 @@ export default function InventoryManager({
   const filteredInsumos = insumos.filter((insumo) => {
     const matchesSearch = insumo.nombre.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const varPct = calcularVariacion(insumo.stockSistema, insumo.stockFisico);
+    const sysQty = insumo.quantity ?? insumo.stockSistema;
+    const varPct = calcularVariacion(sysQty, insumo.conteo ?? insumo.stockFisico);
     const estado = determinarEstadoTolerancia(varPct, insumo.toleranciaPct);
-    const esBajoReorden = insumo.stockSistema <= insumo.puntoReorden;
+    const esBajoReorden = sysQty <= insumo.puntoReorden;
 
     if (filtroEstado === 'todos') return matchesSearch;
     if (filtroEstado === 'dentro') return matchesSearch && estado === 'dentro';
@@ -95,7 +96,7 @@ export default function InventoryManager({
     if (target) {
       onUpdateInsumo({
         ...target,
-        stockFisico: parseFloat(value),
+        conteo: Math.round(parseFloat(value)),
       });
     }
     setEditingId(null);
@@ -300,7 +301,7 @@ export default function InventoryManager({
             className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 shadow-sm hover:shadow transition cursor-pointer"
           >
             <Calculator className="w-4 h-4" />
-            Conteo Físico
+            Actualizar Stock Físico
           </button>
 
           <button
@@ -345,7 +346,7 @@ export default function InventoryManager({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-[11px] font-mono font-bold tracking-wider uppercase border-b border-slate-100">
-                <th className="py-4 px-6">Insumo / Producto</th>
+                <th className="py-4 px-6">Producto</th>
                 <th className="py-4 px-4 text-center">Unidad</th>
                 <th className="py-4 px-4 text-right">Stock del Sistema (A)</th>
                 <th className="py-4 px-4 text-center">Rango Tolerancia Recomendado</th>
@@ -370,12 +371,14 @@ export default function InventoryManager({
                   </tr>
                 ) : (
                   paginatedInsumos.map((insumo) => {
-                    const varPct = calcularVariacion(insumo.stockSistema, insumo.stockFisico);
-                    const diff = insumo.stockFisico - insumo.stockSistema;
-                    const { min, max } = obtenerLimitesTolerancia(insumo.stockSistema, insumo.toleranciaPct);
+                    const sysQty = insumo.quantity ?? insumo.stockSistema;
+                    const varPct = calcularVariacion(sysQty, insumo.conteo ?? insumo.stockFisico);
+                    const diff = (insumo.conteo ?? insumo.stockFisico) - sysQty;
+                    const min = insumo.stockSistema;
+                    const max = insumo.capacidadMaxima;
                     const estado = determinarEstadoTolerancia(varPct, insumo.toleranciaPct);
-                    const esBajoReorden = insumo.stockSistema <= insumo.puntoReorden;
-                    const esSobreInventario = insumo.stockSistema > insumo.capacidadMaxima;
+                    const esBajoReorden = sysQty <= insumo.puntoReorden;
+                    const esSobreInventario = sysQty > insumo.capacidadMaxima;
 
                     return (
                       <motion.tr
@@ -395,12 +398,12 @@ export default function InventoryManager({
                             <div className="flex items-center gap-1.5 mt-1">
                               {esBajoReorden && (
                                 <span className="text-[10px] uppercase font-mono font-bold bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded">
-                                  Punto de Reorden: &le; {insumo.puntoReorden.toFixed(2)}
+                                  Punto de Reorden: &le; {Math.round(insumo.puntoReorden)}
                                 </span>
                               )}
                               {esSobreInventario && (
                                 <span className="text-[10px] uppercase font-mono font-bold bg-purple-100 text-purple-800 border border-purple-200 px-1.5 py-0.5 rounded">
-                                  Exceso: Max {insumo.capacidadMaxima.toFixed(2)}
+                                  Exceso: Max {Math.round(insumo.capacidadMaxima)}
                                 </span>
                               )}
                             </div>
@@ -414,63 +417,28 @@ export default function InventoryManager({
 
                         {/* Stock del Sistema (A) */}
                         <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
-                          {insumo.stockSistema.toFixed(2)}
+                          {insumo.quantity}
                         </td>
 
                         {/* Rango de Tolerancia */}
                         <td className="py-3 px-4 text-center text-xs">
                           <div className="inline-flex items-center gap-1 font-mono text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-150">
-                            <span className="font-semibold text-slate-600">{min.toFixed(2)}</span>
+                            <span className="font-semibold text-slate-600">{Math.round(Number(min))}</span>
                             <span className="text-slate-300">|</span>
-                            <span className="font-semibold text-slate-600">{max.toFixed(2)}</span>
+                            <span className="font-semibold text-slate-600">{Math.round(Number(max))}</span>
                             <span className="text-[10px] text-slate-400 font-sans ml-1">(&plusmn;{insumo.toleranciaPct}%)</span>
                           </div>
                         </td>
 
                         {/* Stock Físico Contado (B) */}
                         <td className="py-3 px-4 text-right bg-slate-50/30">
-                          {editingId === insumo.id ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={tempFisico[insumo.id] !== undefined ? tempFisico[insumo.id] : insumo.stockFisico}
-                                onChange={(e) => setTempFisico({ ...tempFisico, [insumo.id]: e.target.value })}
-                                onBlur={() => handleUpdateFisico(insumo.id)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleUpdateFisico(insumo.id);
-                                  if (e.key === 'Escape') setEditingId(null);
-                                }}
-                                className="w-20 px-2 py-1 text-right text-xs border border-primary-500 bg-white rounded focus:ring-1 focus:ring-primary-500 focus:outline-none"
-                                autoFocus
-                                id={`input-stock-fisico-${insumo.id}`}
-                              />
-                              <button
-                                onClick={() => handleUpdateFisico(insumo.id)}
-                                className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded cursor-pointer"
-                                title="Guardar conteo"
-                                id={`btn-guardar-fisico-${insumo.id}`}
-                              >
-                                <Save className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="group flex items-center justify-end gap-1.5 cursor-pointer" onClick={() => {
-                              setEditingId(insumo.id);
-                              setTempFisico({ ...tempFisico, [insumo.id]: insumo.stockFisico.toString() });
-                            }}>
-                              <span className="font-mono font-bold text-slate-900 border-b border-dashed border-slate-300 group-hover:border-primary-500 group-hover:text-primary-600">
-                                {insumo.stockFisico.toFixed(2)}
-                              </span>
-                              <Edit2 className="w-3.5 h-3.5 text-slate-300 group-hover:text-primary-500 opacity-0 group-hover:opacity-100 transition" />
-                            </div>
-                          )}
+                          {insumo.conteo}
                         </td>
 
                         {/* Diferencia (B - A) */}
                         <td className={`py-3 px-4 text-right font-mono font-medium ${diff === 0 ? 'text-slate-500' : diff > 0 ? 'text-emerald-600' : 'text-rose-600'
                           }`}>
-                          {diff > 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2)}
+                          {diff > 0 ? `+${Math.round(diff)}` : Math.round(diff)}
                         </td>
 
                         {/* % Variación */}
@@ -482,18 +450,18 @@ export default function InventoryManager({
                         {/* Estado */}
                         <td className="py-3 px-6 text-center">
                           {estado === 'dentro' ? (
-                            <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full text-xs font-semibold">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="inline-flex items-center gap-1.5 bg-emerald-600 text-white border border-emerald-700 px-3 py-1 rounded-full text-xs font-semibold shadow-sm">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-white" />
                               DENTRO DEL RANGO
                             </span>
                           ) : estado === 'alerta' ? (
-                            <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1 rounded-full text-xs font-semibold">
-                              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                            <span className="inline-flex items-center gap-1.5 bg-amber-500 text-amber-950 border border-amber-600 px-3 py-1 rounded-full text-xs font-semibold shadow-sm">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-950" />
                               FUERA DEL RANGO (ALERTA)
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-800 border border-rose-200 px-3 py-1 rounded-full text-xs font-semibold">
-                              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                            <span className="inline-flex items-center gap-1.5 bg-rose-600 text-white border border-rose-700 px-3 py-1 rounded-full text-xs font-semibold shadow-sm">
+                              <XCircle className="w-3.5 h-3.5 text-white" />
                               FUERA DEL RANGO (CRÍTICO)
                             </span>
                           )}
@@ -516,7 +484,6 @@ export default function InventoryManager({
                               title="Eliminar insumo"
                               id={`btn-eliminar-insumo-${insumo.id}`}
                             >
-                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </td>

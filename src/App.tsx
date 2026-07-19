@@ -155,6 +155,7 @@ export default function App() {
 
         const minStock = stock ? Number(stock.minimum_stock) : 0;
         const qty = stock ? Number(stock.quantity) : 0;
+        const conteo = stock ? Number(stock.conteo || 0) : 0;
         const maxStock = stock ? Number(stock.maximum_stock) : 80;
 
         return {
@@ -165,7 +166,9 @@ export default function App() {
           stockFisico: qty,
           toleranciaPct: overrides?.toleranciaPct ?? defaultTol,
           puntoReorden: overrides?.puntoReorden ?? (minStock * 0.3),
-          capacidadMaxima: maxStock
+          capacidadMaxima: maxStock,
+          quantity: qty,
+          conteo: conteo
         };
       });
 
@@ -221,6 +224,31 @@ export default function App() {
       console.log('🟢 Connected to Inventory Socket.io gateway.');
     });
 
+    socket.on('inventory_alert', (data: any) => {
+      console.log('📢 Nueva alerta de inventario recibida vía socket:', data);
+      if (data) {
+        const alertType = data.severity === 'CRITICAL'
+          ? 'critico_reorden'
+          : data.severity === 'OVERPRODUCTION'
+            ? 'sobreinventario'
+            : 'fuera_tolerancia_alerta';
+
+        const newAlert: AlertaAlmacen = {
+          id: `socket-alert-${data.inventoryId}-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+          fecha: new Date().toISOString(),
+          insumoId: String(data.inventoryId),
+          insumoNombre: data.productName,
+          tipo: alertType,
+          mensaje: data.message,
+          valorActual: data.quantity,
+          leido: false,
+        };
+
+        setAlertas(prev => [newAlert, ...prev]);
+        showToast(`🚨 Alerta: ${data.message}`, 'error');
+      }
+    });
+
     socket.on('cron_audit_completed', (data: any) => {
       console.log('📢 Nueva auditoría consolidada recibida vía socket:', data);
       if (data && data.success) {
@@ -252,6 +280,12 @@ export default function App() {
       console.error('❌ Error de reabastecimiento:', data);
       showToast(`❌ Error: ${data.message || 'No se pudo completar el reabastecimiento.'}`, 'error');
       setIsRestockingLoading(false);
+    });
+
+    socket.on('sales_processed', (data: any) => {
+      console.log('📢 Procesamiento de ventas completado vía socket:', data);
+      showToast('📈 Ventas procesadas e inventario actualizado.', 'success');
+      fetchInsumos();
     });
 
     socket.on('disconnect', () => {
@@ -378,7 +412,8 @@ export default function App() {
             warehouse_id: 1,
             quantity: updated.stockFisico,
             minimum_stock: updated.stockSistema,
-            maximum_stock: updated.capacidadMaxima
+            maximum_stock: updated.capacidadMaxima,
+            conteo: updated.conteo
           }
         }),
       });
@@ -417,7 +452,8 @@ export default function App() {
           warehouse_id: 1,
           quantity: newInsumoRaw.stockFisico,
           minimum_stock: newInsumoRaw.stockSistema,
-          maximum_stock: newInsumoRaw.capacidadMaxima
+          maximum_stock: newInsumoRaw.capacidadMaxima,
+          conteo: newInsumoRaw.conteo
         }
       };
 
@@ -580,6 +616,7 @@ export default function App() {
 
     // Open the alert drawer automatically so the warehouse sees the real-time notification!
     setAlertDrawerOpen(true);
+    fetchInsumos();
   };
 
   // --- ALERTS HANDLERS ---
@@ -701,13 +738,20 @@ export default function App() {
   const totalInsumos = insumos.length;
 
   const fueraDeRangoCount = insumos.filter((ins) => {
-    const varPct = calcularVariacion(ins.stockSistema, ins.stockFisico);
+    const sysQty = ins.quantity ?? ins.stockSistema;
+    const varPct = calcularVariacion(sysQty, ins.conteo ?? ins.stockFisico);
     return determinarEstadoTolerancia(varPct, ins.toleranciaPct) !== 'dentro';
   }).length;
 
-  const reordenCriticoCount = insumos.filter((ins) => ins.stockSistema <= ins.puntoReorden).length;
+  const reordenCriticoCount = insumos.filter((ins) => (ins.quantity ?? ins.stockSistema) <= ins.puntoReorden).length;
 
-  const sobreinventarioCount = insumos.filter((ins) => ins.stockSistema > ins.capacidadMaxima).length;
+  const sobreinventarioCount = insumos.filter((ins) => (ins.quantity ?? ins.stockSistema) > ins.capacidadMaxima).length;
+
+  const dentroRangoCount = insumos.filter((ins) => {
+    const sysQty = ins.quantity ?? ins.stockSistema;
+    const varPct = calcularVariacion(sysQty, ins.conteo ?? ins.stockFisico);
+    return determinarEstadoTolerancia(varPct, ins.toleranciaPct) === 'dentro';
+  }).length;
 
   const handleLoginSuccess = (userPayload: any, tokenPayload: string) => {
     setUser(userPayload);
@@ -764,6 +808,8 @@ export default function App() {
         onGoBack={() => setView('landing')}
         user={user}
         onLogout={handleLogout}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -784,17 +830,17 @@ export default function App() {
             id="kpi-total-insumos"
           />
           <MetricCard
-            titulo="Desviaciones de Tolerancia"
-            valor={fueraDeRangoCount}
-            subtitulo={`${fueraDeRangoCount} insumos fuera del límite admisible`}
-            color="red"
-            icono={AlertTriangle}
-            activo={(filtroEstado === 'alerta' || filtroEstado === 'critico') && activeTab === 'tolerancia'}
+            titulo="Dentro del Rango"
+            valor={dentroRangoCount}
+            subtitulo="Stock dentro de tolerancia"
+            color="green"
+            icono={CheckCircle2}
+            activo={filtroEstado === 'dentro' && activeTab === 'tolerancia'}
             onClick={() => {
               setActiveTab('tolerancia');
-              setFiltroEstado('alerta'); // Displays warnings and errors
+              setFiltroEstado('dentro');
             }}
-            id="kpi-fuera-rango"
+            id="kpi-sobreinventario"
           />
           <MetricCard
             titulo="Reórdenes Pendientes"
@@ -810,17 +856,17 @@ export default function App() {
             id="kpi-reordenes-criticas"
           />
           <MetricCard
-            titulo="Sobreinventario detectado"
-            valor={sobreinventarioCount}
-            subtitulo="Exceso de stock máximo"
-            color="purple"
-            icono={ShoppingBag}
-            activo={filtroEstado === 'todos' && activeTab === 'tolerancia' && insumos.some(i => i.stockSistema > i.capacidadMaxima)}
+            titulo="Desviaciones de Tolerancia"
+            valor={fueraDeRangoCount}
+            subtitulo={`${fueraDeRangoCount} insumos fuera del límite admisible`}
+            color="red"
+            icono={AlertTriangle}
+            activo={(filtroEstado === 'alerta' || filtroEstado === 'critico') && activeTab === 'tolerancia'}
             onClick={() => {
               setActiveTab('tolerancia');
-              setFiltroEstado('todos');
+              setFiltroEstado('alerta'); // Displays warnings and errors
             }}
-            id="kpi-sobreinventario"
+            id="kpi-fuera-rango"
           />
         </div>
 
@@ -830,10 +876,7 @@ export default function App() {
             {[
               { id: 'tolerancia', label: 'Inventario', icon: ClipboardCheck },
               { id: 'ventas', label: 'Ventas', icon: ShoppingBag },
-              { id: 'orden_produccion', label: 'Orden de Producción', icon: FileText },
-              { id: 'recetas', label: 'Recetas', icon: Utensils },
-              { id: 'auditoria', label: 'Reportes', icon: ClipboardCheck },
-              //{ id: 'compras', label: 'Órdenes de Compra', icon: Truck },
+              { id: 'orden_produccion', label: 'Reposición de Stock', icon: FileText },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -1207,7 +1250,6 @@ export default function App() {
               <button
                 onClick={() => {
                   setActiveTab('orden_produccion');
-                  setLatestRestockAudit(null);
                 }}
                 className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
               >
@@ -1270,9 +1312,60 @@ export default function App() {
                   <p className="text-sm text-slate-500 leading-relaxed font-semibold">
                     El sistema detectó <strong className="text-rose-600 font-black">{latestRestockAudit.items.length} productos</strong> en el Almacén Central con menos de 3 días de suministro o por debajo del stock mínimo.
                   </p>
-                  <p className="text-xs text-slate-400 mt-2 font-medium leading-relaxed bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+                  <p className="text-xs text-slate-400 mt-1 font-medium leading-relaxed bg-slate-50 rounded-xl p-3 border border-slate-100">
                     Se recomienda descargar la propuesta detallada en formato Excel para auditar individualmente o hacer clic en <strong>Aprobar y Surtir Almacén</strong> para reponer todos los insumos automáticamente.
                   </p>
+                </div>
+
+                {/* Detailed items list from Cron */}
+                <div className="w-full border border-slate-100 rounded-2xl overflow-hidden shadow-xs bg-white text-left">
+                  <div className="max-h-56 overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold sticky top-0 z-10">
+                          <th className="px-4 py-3">Insumo</th>
+                          <th className="px-4 py-3 text-right">Físico</th>
+                          <th className="px-4 py-3 text-right">Sugerido</th>
+                          <th className="px-4 py-3 text-center">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {latestRestockAudit.items.map((item: any, idx: number) => {
+                          const days = item.daysRemaining;
+                          let statusText = 'Crítico';
+                          let dotColor = 'bg-orange-500';
+                          if (item.physicalStock === 0) {
+                            statusText = 'Agotado';
+                            dotColor = 'bg-red-500 animate-pulse';
+                          } else if (days <= 1) {
+                            statusText = 'Urgente';
+                            dotColor = 'bg-red-500';
+                          }
+
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/50 transition">
+                              <td className="px-4 py-2.5">
+                                <div className="font-semibold text-slate-800">{item.name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{item.sku}</div>
+                              </td>
+                              <td className="px-4 py-2.5 text-right font-mono font-medium text-slate-500">
+                                {Math.round(item.physicalStock)} {item.uom}
+                              </td>
+                              <td className="px-4 py-2.5 text-right font-mono font-black text-rose-600">
+                                +{Math.round(item.qtyToRestock)} {item.uom}
+                              </td>
+                              <td className="px-4 py-2.5 text-center">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500">
+                                  <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>
+                                  {statusText}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 

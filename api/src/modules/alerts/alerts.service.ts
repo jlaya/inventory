@@ -87,17 +87,6 @@ export class AlertsService {
       let projectedDemand = 0;
 
       if (isCentral) {
-        // Apply Central Inventory Rules in Priority order
-        if (stockActual < (projectedDailyDemand * 3)) {
-          severity = 'CRITICAL';
-          message = `🚨 *ALERTA CRÍTICA*: El stock físico actual de *${inventory.name}* (*${stockActual.toFixed(2)}*) es insuficiente para cubrir 3 días de operación en *${warehouse.name}* (Requerido: *${(projectedDailyDemand * 3).toFixed(2)}*).`;
-        } else if (stockActual > (projectedWeeklyDemand * 1.30)) {
-          severity = 'OVERPRODUCTION';
-          message = `🟢 *ALERTA SOBREPRODUCCIÓN*: Stock de *${inventory.name}* en *${warehouse.name}* supera la demanda semanal en más del 30%. Stock actual: *${stockActual.toFixed(2)}* (Límite: *${(projectedWeeklyDemand * 1.30).toFixed(2)}*).`;
-        } else if (projectedProduction < projectedWeeklyDemand) {
-          severity = 'PREVENTIVE';
-          message = `⚠️ *ALERTA PREVENTIVA*: Ritmo de producción proyectado de *${inventory.name}* en *${warehouse.name}* (*${projectedProduction.toFixed(2)}*) no satisfará la demanda semanal proyectada (*${projectedWeeklyDemand.toFixed(2)}*).`;
-        }
         dailyAvg = projectedDailyDemand;
         plannedProduction = projectedProduction;
         projectedDemand = projectedWeeklyDemand;
@@ -175,18 +164,18 @@ export class AlertsService {
 
         // 6. Calculate Projected Demand (projectedDemand)
         projectedDemand = dailyAvg * 7;
+      }
 
-        // 7. Evaluate Levels
-        if (stockActual < dailyAvg * 3) {
-          severity = 'CRITICAL';
-          message = `🚨 *ALERTA CRÍTICA*: Stock de *${inventory.name}* en *${warehouse.name}* es extremadamente bajo. Stock actual: *${stockActual.toFixed(2)}* ${inventory.uom?.abbreviation || 'und'} (Consumo diario promedio: *${dailyAvg.toFixed(2)}*). Se requiere reabastecimiento urgente.`;
-        } else if ((stockActual + plannedProduction) < projectedDemand) {
-          severity = 'PREVENTIVE';
-          message = `⚠️ *ALERTA PREVENTIVA*: Stock proyectado de *${inventory.name}* en *${warehouse.name}* no cubrirá la demanda semanal. Stock actual + Planificado: *${(stockActual + plannedProduction).toFixed(2)}* ${inventory.uom?.abbreviation || 'und'} (Demanda proyectada: *${projectedDemand.toFixed(2)}*).`;
-        } else if (stockActual > projectedDemand * 1.3) {
-          severity = 'OVERPRODUCTION';
-          message = `🔵 *ALERTA SOBREPRODUCCIÓN*: Stock de *${inventory.name}* en *${warehouse.name}* supera la demanda proyectada en más del 30%. Stock actual: *${stockActual.toFixed(2)}* ${inventory.uom?.abbreviation || 'und'} (Límite proyectado: *${(projectedDemand * 1.3).toFixed(2)}*).`;
-        }
+      // Evaluate Levels based on quantity (stockActual) vs minimumStock/maximumStock
+      if (stockActual < minimumStock) {
+        severity = 'CRITICAL';
+        message = `🚨 *ALERTA CRÍTICA*: El stock físico de *${inventory.name}* en *${warehouse.name}* (*${stockActual.toFixed(2)}*) está por debajo del stock mínimo (*${minimumStock.toFixed(2)}*).`;
+      } else if (maximumStock > 0 && stockActual > maximumStock) {
+        severity = 'OVERPRODUCTION';
+        message = `🟢 *ALERTA SOBREPRODUCCIÓN*: El stock de *${inventory.name}* en *${warehouse.name}* (*${stockActual.toFixed(2)}*) supera el stock máximo (*${maximumStock.toFixed(2)}*).`;
+      } else if (stockActual < minimumStock * 1.2) {
+        severity = 'PREVENTIVE';
+        message = `⚠️ *ALERTA PREVENTIVA*: El stock físico de *${inventory.name}* en *${warehouse.name}* (*${stockActual.toFixed(2)}*) está próximo al stock mínimo (*${minimumStock.toFixed(2)}*).`;
       }
 
       if (severity !== 'NORMAL') {
@@ -256,10 +245,10 @@ export class AlertsService {
         continue;
       }
 
-      const stockActual = Number(stock.quantity || 0); // Physical stock
-      const minimumStock = Number(stock.minimumStock || 0); // System stock
+      const quantityVal = Number(stock.quantity || 0); // System stock
+      const conteoVal = Number(stock.conteo || 0); // Physical stock (from conteo field)
 
-      const variationPct = minimumStock === 0 ? 0 : ((stockActual - minimumStock) / minimumStock) * 100;
+      const variationPct = quantityVal === 0 ? 0 : ((conteoVal - quantityVal) / quantityVal) * 100;
       const absVar = Math.abs(variationPct);
 
       let severity: 'CRITICAL' | 'PREVENTIVE' | 'NORMAL' = 'NORMAL';
@@ -283,8 +272,8 @@ export class AlertsService {
         sku: inventory.sku,
         name: inventory.name,
         uom: inventory.uom?.abbreviation || 'und',
-        systemStock: minimumStock,
-        physicalStock: stockActual,
+        systemStock: quantityVal,
+        physicalStock: conteoVal,
         variationPct,
         alertType: severity,
         justification
@@ -644,6 +633,14 @@ export class AlertsService {
       this.logger.log('Cron de reabastecimiento crítico completado con éxito.');
     } catch (e) {
       this.logger.error('Error en cron de reabastecimiento crítico', e);
+    }
+  }
+
+  emitSalesProcessed(data: any) {
+    try {
+      this.gateway.emitSalesProcessed(data);
+    } catch (e) {
+      this.logger.error('Error emitting sales_processed event', e);
     }
   }
 }
