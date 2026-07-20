@@ -5,7 +5,9 @@ import { UpdateIngredientDto } from './dto/update-ingredient.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { Public } from '../../core/decorators/public.decorator';
 
+@Public()
 @Controller('ingredients')
 export class IngredientsController {
   constructor(private readonly ingredientsService: IngredientsService) { }

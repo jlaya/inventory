@@ -33,4 +33,8 @@ export class InventoryGateway implements OnGatewayConnection {
   emitRestockingNeeded(restockData: any) {
     this.server.emit('restocking_needed', restockData);
   }
+
+  emitSalesProcessed(salesData: any) {
+    this.server.emit('sales_processed', salesData);
+  }
 }

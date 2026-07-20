@@ -30,6 +30,7 @@ export class InventoryStockService {
       existing.quantity = Number(dto.quantity);
       if (dto.minimum_stock !== undefined) existing.minimumStock = Number(dto.minimum_stock);
       if (dto.bin_location !== undefined) existing.binLocation = dto.bin_location;
+      if (dto.conteo !== undefined) existing.conteo = Number(dto.conteo);
 
       const saved = await this.dataSource.getRepository(InventoryStock).save(existing);
 
@@ -57,6 +58,7 @@ export class InventoryStockService {
     s.quantity = Number(dto.quantity) || 0;
     s.minimumStock = Number(dto.minimum_stock) || 0;
     s.binLocation = dto.bin_location || 'General';
+    s.conteo = Number(dto.conteo) || 0;
 
     const savedNew = await this.dataSource.getRepository(InventoryStock).save(s);
 
@@ -114,6 +116,7 @@ export class InventoryStockService {
     if (dto.quantity !== undefined) s.quantity = Number(dto.quantity);
     if (dto.minimum_stock !== undefined) s.minimumStock = Number(dto.minimum_stock);
     if (dto.bin_location !== undefined) s.binLocation = dto.bin_location;
+    if (dto.conteo !== undefined) s.conteo = Number(dto.conteo);
 
     const saved = await this.dataSource.getRepository(InventoryStock).save(s);
 
@@ -154,6 +157,7 @@ export class InventoryStockService {
       quantity: Number(s.quantity),
       minimum_stock: Number(s.minimumStock),
       maximum_stock: Number(s.maximumStock || 0),
+      conteo: Number(s.conteo || 0),
       bin_location: s.binLocation,
       updated_at: s.updatedAt,
       productName: s.inventory?.name || 'Producto Eliminado',

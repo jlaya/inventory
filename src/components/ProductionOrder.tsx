@@ -94,18 +94,13 @@ export default function ProductionOrder({
   };
 
   useEffect(() => {
-    if (!latestRestockAudit) {
-      fetchRestockingData();
-    }
+    fetchRestockingData();
   }, []);
 
-  // Filter items that have 3 days or less of supply
-  // Note: daysRemaining <= 3 covers all critical inventory replenishment requirements
+  // Use all restocking items returned by the backend audit
   const criticalItems = React.useMemo(() => {
     if (!latestRestockAudit || !latestRestockAudit.items) return [];
-    return (latestRestockAudit.items as ProductionOrderItem[]).filter(
-      item => item.daysRemaining <= 3 || item.physicalStock === 0
-    );
+    return latestRestockAudit.items as ProductionOrderItem[];
   }, [latestRestockAudit]);
 
   // Download PDF request form
@@ -135,7 +130,7 @@ export default function ProductionOrder({
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(13);
-      doc.text('ORDEN DE PRODUCCIÓN', 22, 21);
+      doc.text('Reposicion de Stock', 22, 21);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
@@ -280,7 +275,7 @@ export default function ProductionOrder({
           </div>
           <div>
             <h2 className="font-display font-black text-xl text-slate-800 tracking-tight">
-              Orden de Producción
+              Reposicion de Stock
             </h2>
             <p className="text-xs text-slate-500 font-semibold mt-0.5">
               Planificación y abastecimiento de insumos críticos con suministro menor o igual a 3 días.
@@ -475,7 +470,7 @@ export default function ProductionOrder({
                       <td className="px-6 py-4 font-semibold text-slate-800">{item.name}</td>
                       <td className="px-6 py-4 text-right text-slate-400 font-medium">{item.uom}</td>
                       <td className="px-6 py-4 text-right font-mono font-medium text-slate-500">
-                        {Math.round(item.physicalStock)}
+                        {item.physicalStock}
                       </td>
                       <td className="px-6 py-4 text-right font-mono font-medium text-slate-500">
                         {Math.round(item.dailyDemand)}
@@ -556,7 +551,7 @@ export default function ProductionOrder({
                   <p className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">
                     Resumen de Insumos a Surtir ({criticalItems.length} items):
                   </p>
-                  
+
                   <div className="max-h-40 overflow-y-auto border border-slate-100 rounded-xl p-3 space-y-2 bg-slate-50">
                     {criticalItems.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center text-[11px] py-0.5 border-b border-slate-100 last:border-0">

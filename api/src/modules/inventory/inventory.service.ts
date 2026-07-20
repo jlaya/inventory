@@ -28,7 +28,7 @@ export class InventoryService {
         c.id AS category_id, c.name AS category_name,
         u.id AS uom_id, u.name AS uom_name, u.abbreviation AS uom_abbreviation,
         s.id AS stock_id, s.warehouse_id, s.quantity, s.minimum_stock, s.maximum_stock, s.bin_location,
-        s.projected_daily_demand, s.projected_weekly_demand, s.projected_production
+        s.projected_daily_demand, s.projected_weekly_demand, s.projected_production, s.conteo
       FROM inventory i
       LEFT JOIN categories c ON i.category_id = c.id
       LEFT JOIN units_of_measure u ON i.uom_id = u.id
@@ -87,7 +87,8 @@ export class InventoryService {
         projected_daily_demand: Number(row.projected_daily_demand || 0),
         projected_weekly_demand: Number(row.projected_weekly_demand || 0),
         projected_production: Number(row.projected_production || 0),
-        bin_location: row.bin_location
+        bin_location: row.bin_location,
+        conteo: Number(row.conteo || 0)
       } : null
     }));
   }
@@ -103,7 +104,7 @@ export class InventoryService {
         i.tracks_expiration, i.reference_cost, i.is_active,
         c.id AS category_id, c.name AS category_name,
         u.id AS uom_id, u.name AS uom_name, u.abbreviation AS uom_abbreviation,
-        s.id AS stock_id, s.warehouse_id, s.quantity, s.minimum_stock, s.maximum_stock, s.bin_location
+        s.id AS stock_id, s.warehouse_id, s.quantity, s.minimum_stock, s.maximum_stock, s.bin_location, s.conteo
       FROM inventory i
       LEFT JOIN categories c ON i.category_id = c.id
       LEFT JOIN units_of_measure u ON i.uom_id = u.id
@@ -141,7 +142,8 @@ export class InventoryService {
         quantity: Number(row.quantity),
         minimum_stock: Number(row.minimum_stock),
         maximum_stock: Number(row.maximum_stock),
-        bin_location: row.bin_location
+        bin_location: row.bin_location,
+        conteo: Number(row.conteo || 0)
       } : null
     };
   }
@@ -156,8 +158,8 @@ export class InventoryService {
     // Save stock if provided
     if (inventory_stock) {
       await this.inventoryRepo.manager.query(
-        `INSERT INTO inventory_stock (warehouse_id, inventory_id, quantity, minimum_stock, maximum_stock, projected_daily_demand, projected_weekly_demand, projected_production, bin_location, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        `INSERT INTO inventory_stock (warehouse_id, inventory_id, quantity, minimum_stock, maximum_stock, projected_daily_demand, projected_weekly_demand, projected_production, bin_location, conteo, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
         [
           inventory_stock.warehouse_id,
           savedProduct.id,
@@ -167,7 +169,8 @@ export class InventoryService {
           inventory_stock.projected_daily_demand || 0,
           inventory_stock.projected_weekly_demand || 0,
           inventory_stock.projected_production || 0,
-          inventory_stock.bin_location || 'Estantería General'
+          inventory_stock.bin_location || 'Estantería General',
+          inventory_stock.conteo || 0
         ]
       ).then(async () => {
         await this.alertsService.evaluateStock(Number(savedProduct.id), Number(inventory_stock.warehouse_id));
@@ -254,8 +257,9 @@ export class InventoryService {
              projected_weekly_demand = $5, 
              projected_production = $6, 
              bin_location = $7, 
+             conteo = $8,
              updated_at = NOW()
-           WHERE warehouse_id = $8 AND inventory_id = $9`,
+           WHERE warehouse_id = $9 AND inventory_id = $10`,
           [
             inventory_stock.quantity || 0,
             inventory_stock.minimum_stock || 0,
@@ -264,6 +268,7 @@ export class InventoryService {
             inventory_stock.projected_weekly_demand || 0,
             inventory_stock.projected_production || 0,
             inventory_stock.bin_location || 'Estantería General',
+            inventory_stock.conteo || 0,
             inventory_stock.warehouse_id,
             id
           ]
@@ -272,8 +277,8 @@ export class InventoryService {
         }).catch(err => console.error('Error updating stock:', err));
       } else {
         await this.inventoryRepo.manager.query(
-          `INSERT INTO inventory_stock (warehouse_id, inventory_id, quantity, minimum_stock, maximum_stock, projected_daily_demand, projected_weekly_demand, projected_production, bin_location, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+          `INSERT INTO inventory_stock (warehouse_id, inventory_id, quantity, minimum_stock, maximum_stock, projected_daily_demand, projected_weekly_demand, projected_production, bin_location, conteo, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
           [
             inventory_stock.warehouse_id,
             id,
@@ -283,7 +288,8 @@ export class InventoryService {
             inventory_stock.projected_daily_demand || 0,
             inventory_stock.projected_weekly_demand || 0,
             inventory_stock.projected_production || 0,
-            inventory_stock.bin_location || 'Estantería General'
+            inventory_stock.bin_location || 'Estantería General',
+            inventory_stock.conteo || 0
           ]
         ).then(async () => {
           await this.alertsService.evaluateStock(Number(id), Number(inventory_stock.warehouse_id));
@@ -1242,15 +1248,15 @@ export class InventoryService {
 
         await this.inventoryRepo.manager.query(
           `UPDATE inventory_stock SET 
-             quantity = $1, 
-             minimum_stock = $2, 
-             maximum_stock = $3, 
-             projected_daily_demand = $4,
-             projected_weekly_demand = $5,
-             projected_production = $6,
-             updated_at = NOW() 
+             minimum_stock = $1, 
+             maximum_stock = $2, 
+             projected_daily_demand = $3,
+             projected_weekly_demand = $4,
+             projected_production = $5,
+             conteo = $6,
+             updated_at = NOW()
            WHERE inventory_id = $7 AND warehouse_id = 1`,
-          [quantity, finalMinStock, finalMaxStock, finalDailyDemand, finalWeeklyDemand, finalProduction, id]
+          [finalMinStock, finalMaxStock, finalDailyDemand, finalWeeklyDemand, finalProduction, quantity, id]
         );
       } else {
         const finalMinStock = minStock !== null && !isNaN(minStock) ? minStock : 0;
@@ -1260,9 +1266,9 @@ export class InventoryService {
         const finalProduction = production !== null && !isNaN(production) ? production : 0;
 
         await this.inventoryRepo.manager.query(
-          `INSERT INTO inventory_stock (warehouse_id, inventory_id, quantity, minimum_stock, maximum_stock, projected_daily_demand, projected_weekly_demand, projected_production, updated_at)
+          `INSERT INTO inventory_stock (warehouse_id, inventory_id, minimum_stock, maximum_stock, projected_daily_demand, projected_weekly_demand, projected_production, conteo, updated_at)
            VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW())`,
-          [id, quantity, finalMinStock, finalMaxStock, finalDailyDemand, finalWeeklyDemand, finalProduction]
+          [id, finalMinStock, finalMaxStock, finalDailyDemand, finalWeeklyDemand, finalProduction, quantity]
         );
       }
 
